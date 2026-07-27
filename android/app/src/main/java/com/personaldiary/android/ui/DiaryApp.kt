@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
-import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.ListAlt
 import androidx.compose.material3.CircularProgressIndicator
@@ -131,13 +130,12 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                 padding = padding,
                 onBodyChange = viewModel::onBodyChange,
                 onPickImage = { imageLauncher.launch("image/*") },
-                onRefreshWeather = { viewModel.refreshWeather(auto = false) },
             )
             else -> TimelinePane(
                 entries = state.timeline,
                 padding = padding,
                 onOpen = { date ->
-                    viewModel.openDate(date, fetchWeather = date == DiaryEntry.today())
+                    viewModel.openDate(date)
                     tab = 0
                 },
             )
@@ -151,7 +149,6 @@ private fun EditorPane(
     padding: PaddingValues,
     onBodyChange: (String) -> Unit,
     onPickImage: () -> Unit,
-    onRefreshWeather: () -> Unit,
 ) {
     val entry = state.entry
     val app = LocalContext.current.applicationContext as DiaryApplication
@@ -175,30 +172,25 @@ private fun EditorPane(
         )
         Spacer(Modifier.height(4.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            val contextLine = entry.contextLine().ifBlank { "获取地点与天气" }
-            Text(
-                text = contextLine,
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (entry.hasContext) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable { onRefreshWeather() },
-            )
+            val contextLine = entry.contextLine().ifBlank {
+                if (state.weatherLoading) "正在记录地点与天气…" else ""
+            }
+            if (contextLine.isNotBlank()) {
+                Text(
+                    text = contextLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
             if (state.weatherLoading) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(18.dp),
                     strokeWidth = 2.dp,
                     color = MaterialTheme.colorScheme.primary,
                 )
-            } else {
-                IconButton(onClick = onRefreshWeather) {
-                    Icon(
-                        Icons.Outlined.CloudSync,
-                        contentDescription = "刷新天气",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
             }
             IconButton(onClick = onPickImage) {
                 Icon(

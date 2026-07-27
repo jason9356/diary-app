@@ -6,7 +6,8 @@
 
 - 视觉语言与桌面一致：冷静纸色 + 苔绿点缀 + 霞鹜文楷
 - 打开即写今天；时间线浏览
-- **自动定位 + 天气**（`context_source=phone`），OPPO / ColorOS 国行走系统 `LocationManager` 回退（不依赖 GMS）
+- **自动定位 + 天气**（`context_source=phone`）：仅在**新建当天日记且尚无地点/天气**时采集一次，之后不再刷新
+- OPPO / ColorOS 国行走系统 `LocationManager` 回退（不依赖 GMS）
 - 相册插图，本地目录与桌面协议对齐
 
 ## 数据目录（应用私有存储）

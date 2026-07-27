@@ -67,6 +67,8 @@ class DiaryRepository(dataRoot: File) {
     fun listEntries(): List<DiaryEntry> =
         md.listDates().map { getOrCreate(it) }.filter { it.body.isNotBlank() || it.hasContext }
 
+    fun existsOnDisk(entryDate: String): Boolean = md.exists(entryDate)
+
     fun saveImage(context: Context, entryDate: String, uri: Uri): Pair<DiaryEntry, String> {
         val rel = assets.saveFromUri(context, entryDate, uri)
         val entry = getOrCreate(entryDate)

@@ -39,11 +39,13 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private var autosaveJob: Job? = null
 
     init {
-        openDate(DiaryEntry.today(), fetchWeather = true)
+        openDate(DiaryEntry.today())
     }
 
-    fun openDate(entryDate: String, fetchWeather: Boolean = false) {
+    fun openDate(entryDate: String) {
         val entry = repo.getOrCreate(entryDate)
+        val isNewToday =
+            entryDate == DiaryEntry.today() && !entry.hasContext
         _state.update {
             it.copy(
                 entry = entry,
@@ -52,8 +54,9 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 needLocationPermission = false,
             )
         }
-        if (fetchWeather && entryDate == DiaryEntry.today()) {
-            refreshWeather(auto = true)
+        // Location/weather: only once when today's diary has no context yet.
+        if (isNewToday) {
+            captureContextOnce()
         }
     }
 
@@ -103,15 +106,12 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshWeather(auto: Boolean = false) {
+    /** One-shot capture at diary creation; never overwrites existing context. */
+    private fun captureContextOnce() {
         viewModelScope.launch {
+            if (_state.value.entry.hasContext) return@launch
             if (!locationHelper.hasPermission()) {
-                _state.update {
-                    it.copy(
-                        needLocationPermission = true,
-                        status = if (auto) it.status else "需要定位权限以获取天气",
-                    )
-                }
+                _state.update { it.copy(needLocationPermission = true) }
                 return@launch
             }
             _state.update { it.copy(weatherLoading = true, needLocationPermission = false) }
@@ -122,21 +122,30 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 return@launch
             }
+            // Re-check: user may have switched days while locating.
+            val date = _state.value.entry.entryDate
+            if (date != DiaryEntry.today() || _state.value.entry.hasContext) {
+                _state.update { it.copy(weatherLoading = false) }
+                return@launch
+            }
             val label = placeResolver.labelFor(loc.latitude, loc.longitude)
             val snap = weatherService.fetch(loc.latitude, loc.longitude, label)
             if (snap == null) {
                 _state.update { it.copy(weatherLoading = false, status = "天气获取失败") }
                 return@launch
             }
-            val saved = repo.saveContext(_state.value.entry.entryDate, snap)
-            // Keep in-progress body.
+            if (_state.value.entry.hasContext || _state.value.entry.entryDate != date) {
+                _state.update { it.copy(weatherLoading = false) }
+                return@launch
+            }
+            val saved = repo.saveContext(date, snap)
             val merged = saved.copy(body = _state.value.entry.body)
             repo.save(merged)
             _state.update {
                 it.copy(
                     entry = merged.copy(imageRels = repo.getOrCreate(merged.entryDate).imageRels),
                     weatherLoading = false,
-                    status = "天气已更新 · ${merged.contextLine()}",
+                    status = "已记录 · ${merged.contextLine()}",
                     timeline = repo.listEntries(),
                 )
             }
@@ -145,7 +154,12 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPermissionResult(granted: Boolean) {
         if (granted) {
-            refreshWeather(auto = false)
+            // Only fill if today's diary still has no context (first create).
+            if (_state.value.entry.entryDate == DiaryEntry.today() &&
+                !_state.value.entry.hasContext
+            ) {
+                captureContextOnce()
+            }
         } else {
             _state.update { it.copy(needLocationPermission = false, status = "未授予定位权限") }
         }

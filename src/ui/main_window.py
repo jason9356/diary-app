@@ -381,10 +381,11 @@ class MainWindow(QMainWindow):
             self.editor.focus_editor()
         self._set_status(f"已打开 {entry_date}")
 
-        # Auto weather for today when not owned by phone.
-        if entry_date == self.service.today() and entry.context_source != "phone":
-            if not (entry.location and entry.weather and entry.temp_c is not None):
-                self.fetch_weather(force_prompt=False, silent=True)
+        # Auto weather only when creating today's entry with empty context.
+        if entry_date == self.service.today() and not (
+            entry.location or entry.weather or entry.temp_c is not None
+        ):
+            self.fetch_weather(force_prompt=False, silent=True)
 
     def save_current(self) -> None:
         if self._loading:
