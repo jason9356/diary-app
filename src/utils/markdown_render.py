@@ -24,13 +24,15 @@ def md_to_html(source: str, *, base_dir: Path, palette: dict[str, str], mono: bo
     css = _preview_css(palette, mono=mono)
     # file:/// base lets relative assets/… paths resolve under data root.
     base = base_dir.resolve().as_uri().rstrip("/") + "/"
+    empty = '<p class="empty">开始书写，预览将显示在这里…</p>'
+    content = body if body.strip() else empty
     return (
         "<!DOCTYPE html><html><head>"
         f'<meta charset="utf-8"/>'
         f'<base href="{html.escape(base, quote=True)}"/>'
         f"<style>{css}</style>"
         "</head><body>"
-        f"{body if body.strip() else '<p class=\"empty\">开始书写，预览将显示在这里…</p>'}"
+        f"{content}"
         "</body></html>"
     )
 
