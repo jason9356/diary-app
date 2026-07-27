@@ -67,7 +67,6 @@ class AppConfig:
 def load_config() -> AppConfig:
     """Load config from disk or create defaults."""
     cfg = AppConfig()
-    cfg.data_dir = str(default_data_dir())
     path = cfg.config_path
     if path.exists():
         try:
@@ -77,6 +76,10 @@ def load_config() -> AppConfig:
                     setattr(cfg, key, value)
         except Exception as exc:  # noqa: BLE001 — recover with defaults
             logger.warning("Failed to load config, using defaults: %s", exc)
+
+    # Empty / missing data_dir → project-local default (portable; no machine path).
+    if not str(cfg.data_dir).strip():
+        cfg.data_dir = ""
 
     cfg.data_path.mkdir(parents=True, exist_ok=True)
     cfg.diary_root.mkdir(parents=True, exist_ok=True)
@@ -90,5 +93,11 @@ def save_config(cfg: AppConfig) -> None:
     path = cfg.config_path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = asdict(cfg)
+    # Keep default data location as "" so tracked config stays machine-agnostic.
+    try:
+        if not str(cfg.data_dir).strip() or Path(cfg.data_dir).resolve() == default_data_dir().resolve():
+            payload["data_dir"] = ""
+    except OSError:
+        payload["data_dir"] = ""
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     logger.debug("Config saved → %s", path)

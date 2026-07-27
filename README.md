@@ -3,6 +3,8 @@
 美观、私密、数据完全本地的个人日记。打开即写，自动保存。  
 技术栈：**Python 3.10+ / PySide6 / SQLite / Markdown**。
 
+当前版本：**0.2.0** · 变更记录见 [CHANGELOG.md](./CHANGELOG.md) · 许可 [MIT](./LICENSE)
+
 ## 功能（第一版）
 
 - 打开应用直接进入今天的日记编辑区
@@ -26,7 +28,7 @@
 在项目根目录执行：
 
 ```powershell
-cd C:\Users\LXP\Projects\diary-app
+# 在项目根目录执行
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
