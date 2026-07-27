@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# App data & logs (local only)
+data/diary/**
+data/assets/**
+!data/diary/.gitkeep
+!data/assets/.gitkeep
+logs/**
+!logs/.gitkeep
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Packaging
+*.spec
+.DS_Store
+Thumbs.db
+
+# Exports / temp
+*.zip
+.tmp/
+temp/
