@@ -35,8 +35,8 @@ class SearchPanel(QWidget):
         self.results.itemClicked.connect(self._on_click)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(16, 4, 16, 8)
+        layout.setSpacing(8)
         layout.addWidget(self.title)
         layout.addWidget(self.search_box)
         layout.addWidget(self.results, 1)

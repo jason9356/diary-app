@@ -44,8 +44,8 @@ class TimelinePanel(QWidget):
         self.list.itemClicked.connect(self._on_click)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 4, 12, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(16, 4, 16, 8)
+        layout.setSpacing(8)
         layout.addWidget(self.title)
         layout.addLayout(filters)
         layout.addWidget(self.list, 1)
@@ -93,7 +93,7 @@ class TimelinePanel(QWidget):
             thumb = self._thumbnail(entry, service)
             if thumb is not None:
                 item.setIcon(QIcon(thumb))
-            item.setSizeHint(QSize(0, 76))
+            item.setSizeHint(QSize(0, 68))
             self.list.addItem(item)
 
     def select_date(self, entry_date: str) -> None:

@@ -1,14 +1,15 @@
 {
   "data_dir": "",
-  "theme": "dark",
+  "theme": "system",
   "font_mode": "system",
   "editor_mode": "split",
   "window_width": 1100,
   "window_height": 720,
-  "sidebar_width": 320,
+  "sidebar_width": 256,
   "autosave_ms": 600,
   "min_window_width": 800,
   "min_window_height": 520,
   "sync_endpoint": "",
-  "device_id": ""
+  "device_id": "",
+  "weather_city": ""
 }

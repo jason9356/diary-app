@@ -5,7 +5,7 @@ Modes: edit | preview | split
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence, QTextCursor
@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from ui.image_strip import ImageFilmstrip
 from ui.styles import LIGHT
 from utils.markdown_render import md_to_html
 
@@ -32,8 +33,10 @@ class DiaryEditor(QWidget):
     content_changed = Signal()
     save_requested = Signal()
     image_dropped = Signal(str)  # local filesystem path
+    image_pick_requested = Signal()
     focus_changed = Signal(bool)
     mode_changed = Signal(str)
+    context_clicked = Signal()
 
     def __init__(
         self,
@@ -51,12 +54,23 @@ class DiaryEditor(QWidget):
 
         self.date_label = QLabel("")
         self.date_label.setObjectName("dateHeading")
+        self.context_label = QLabel("")
+        self.context_label.setObjectName("contextLabel")
+        self.context_label.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.context_label.setToolTip("点击编辑或获取地点 / 天气")
+        self.context_label.mousePressEvent = (  # type: ignore[method-assign]
+            lambda ev: self.context_clicked.emit()
+        )
         self.meta_label = QLabel("")
         self.meta_label.setObjectName("metaLabel")
 
+        self.filmstrip = ImageFilmstrip()
+        self.filmstrip.set_data_root(self._data_root)
+        self.filmstrip.image_clicked.connect(self._on_film_click)
+
         self.editor = QPlainTextEdit()
         self.editor.setObjectName("diaryEditor")
-        self.editor.setPlaceholderText("写点什么…（支持 Markdown）")
+        self.editor.setPlaceholderText("写点什么…（支持 Markdown，可拖入或点「图片」插入）")
         self.editor.setAcceptDrops(False)
         self.editor.setTabChangesFocus(False)
         self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
@@ -83,8 +97,10 @@ class DiaryEditor(QWidget):
         header = QVBoxLayout()
         header.setSpacing(2)
         header.addWidget(self.date_label)
+        header.addWidget(self.context_label)
         header.addWidget(self.meta_label)
         layout.addLayout(header)
+        layout.addWidget(self.filmstrip)
         layout.addWidget(toolbar)
         layout.addWidget(self._splitter, 1)
 
@@ -124,6 +140,7 @@ class DiaryEditor(QWidget):
         btn("1.", "有序列表", lambda: self._wrap_line("1. "))
         btn("“", "引用", lambda: self._wrap_line("> "))
         btn("</>", "代码块", lambda: self._insert_block("```\n", "\n```"))
+        btn("图片", "插入图片（也可拖入编辑区）", self.image_pick_requested.emit)
 
         row.addSpacing(12)
 
@@ -153,11 +170,15 @@ class DiaryEditor(QWidget):
 
     def set_data_root(self, path: Path) -> None:
         self._data_root = Path(path)
+        self.filmstrip.set_data_root(self._data_root)
         self.refresh_preview()
 
     def set_theme_palette(self, palette: dict[str, str], mono: bool = False) -> None:
+        from utils.fonts import emphasis_font
+
         self._palette = dict(palette)
         self._mono = mono
+        self.date_label.setFont(emphasis_font(pixel_size=26, bold=True))
         self.refresh_preview()
 
     def set_mode(self, mode: EditorMode) -> None:
@@ -202,6 +223,35 @@ class DiaryEditor(QWidget):
         self.date_label.setText(title)
         self.meta_label.setText(meta)
 
+    def set_context(
+        self,
+        location: str = "",
+        weather: str = "",
+        temp_c: Optional[float] = None,
+        *,
+        placeholder: str = "获取天气",
+    ) -> None:
+        parts: list[str] = []
+        if location.strip():
+            parts.append(location.strip())
+        wx = weather.strip()
+        if temp_c is not None:
+            temp = f"{temp_c:g}°"
+            parts.append(f"{wx} {temp}".strip() if wx else temp)
+        elif wx:
+            parts.append(wx)
+        if parts:
+            self.context_label.setText(" · ".join(parts))
+            self.context_label.setProperty("empty", False)
+        else:
+            self.context_label.setText(placeholder)
+            self.context_label.setProperty("empty", True)
+        self.context_label.style().unpolish(self.context_label)
+        self.context_label.style().polish(self.context_label)
+
+    def set_day_images(self, rel_paths: list[str]) -> None:
+        self.filmstrip.set_images(rel_paths)
+
     def set_markdown(self, text: str) -> None:
         self._loading = True
         self.editor.setPlainText(text)
@@ -240,11 +290,9 @@ class DiaryEditor(QWidget):
             palette=self._palette,
             mono=self._mono,
         )
-        # Preserve scroll position roughly.
         bar = self.preview.verticalScrollBar()
         pos = bar.value()
         self.preview.setHtml(html_doc)
-        # Ensure relative image URLs resolve via base href; also set search paths.
         self.preview.setSearchPaths([str(self._data_root)])
         bar.setValue(pos)
 
@@ -259,6 +307,22 @@ class DiaryEditor(QWidget):
 
     def _emit_save(self) -> None:
         self.save_requested.emit()
+
+    def _on_film_click(self, rel: str) -> None:
+        needle = f"]({rel})"
+        text = self.editor.toPlainText()
+        idx = text.find(needle)
+        if idx >= 0:
+            if self._mode == "preview":
+                self.set_mode("split")
+            cursor = self.editor.textCursor()
+            cursor.setPosition(idx)
+            self.editor.setTextCursor(cursor)
+            self.editor.setFocus()
+            self.editor.centerCursor()
+        else:
+            # Asset exists but not yet in markdown — insert reference.
+            self.insert_image_markdown(rel)
 
     def _wrap_selection(self, left: str, right: str) -> None:
         if self._mode == "preview":

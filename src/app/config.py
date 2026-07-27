@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
 
@@ -34,7 +34,7 @@ class AppConfig:
     editor_mode: EditorMode = "split"
     window_width: int = 1100
     window_height: int = 720
-    sidebar_width: int = 320
+    sidebar_width: int = 256
     autosave_ms: int = 600
     min_window_width: int = 800
     min_window_height: int = 520
@@ -42,6 +42,9 @@ class AppConfig:
     # Reserved for future sync clients (Android / server).
     sync_endpoint: str = ""
     device_id: str = ""
+
+    # Preferred city for Open-Meteo (desktop). Empty → IP geolocation once.
+    weather_city: str = ""
 
     @property
     def data_path(self) -> Path:

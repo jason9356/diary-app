@@ -16,7 +16,7 @@ from typing import Iterator, Optional
 
 logger = logging.getLogger("diary.storage.db")
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass
@@ -32,6 +32,11 @@ class EntryMeta:
     content_hash: str
     synced_at: Optional[str] = None
     deleted: int = 0
+    location: str = ""
+    weather: str = ""
+    temp_c: Optional[float] = None
+    context_source: str = ""
+    context_updated_at: str = ""
 
 
 @dataclass
@@ -92,14 +97,18 @@ class Database:
                     file_relpath TEXT NOT NULL,
                     content_hash TEXT NOT NULL DEFAULT '',
                     synced_at TEXT,
-                    deleted INTEGER NOT NULL DEFAULT 0
+                    deleted INTEGER NOT NULL DEFAULT 0,
+                    location TEXT NOT NULL DEFAULT '',
+                    weather TEXT NOT NULL DEFAULT '',
+                    temp_c REAL,
+                    context_source TEXT NOT NULL DEFAULT '',
+                    context_updated_at TEXT NOT NULL DEFAULT ''
                 )
                 """
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_entries_date ON entries(entry_date DESC)"
             )
-            # FTS5 for full-text search (title + body).
             cur.execute(
                 """
                 CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
@@ -111,11 +120,33 @@ class Database:
                 )
                 """
             )
+            row = cur.execute(
+                "SELECT value FROM schema_meta WHERE key = 'version'"
+            ).fetchone()
+            current = int(row[0]) if row else 0
+            if current < 2:
+                self._migrate_to_v2(cur)
+                current = 2
             cur.execute(
-                "INSERT OR IGNORE INTO schema_meta(key, value) VALUES('version', ?)",
+                "INSERT INTO schema_meta(key, value) VALUES('version', ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                 (str(SCHEMA_VERSION),),
             )
-        logger.info("Database ready → %s", self.db_path)
+        logger.info("Database ready → %s (v%s)", self.db_path, SCHEMA_VERSION)
+
+    def _migrate_to_v2(self, cur: sqlite3.Cursor) -> None:
+        cols = {r[1] for r in cur.execute("PRAGMA table_info(entries)").fetchall()}
+        additions = [
+            ("location", "TEXT NOT NULL DEFAULT ''"),
+            ("weather", "TEXT NOT NULL DEFAULT ''"),
+            ("temp_c", "REAL"),
+            ("context_source", "TEXT NOT NULL DEFAULT ''"),
+            ("context_updated_at", "TEXT NOT NULL DEFAULT ''"),
+        ]
+        for name, decl in additions:
+            if name not in cols:
+                cur.execute(f"ALTER TABLE entries ADD COLUMN {name} {decl}")
+        logger.info("Migrated entries schema to v2 (context fields)")
 
     def upsert_entry(
         self,
@@ -127,8 +158,9 @@ class Database:
                 """
                 INSERT INTO entries (
                     id, entry_date, title, word_count, created_at, updated_at,
-                    writing_duration_sec, file_relpath, content_hash, synced_at, deleted
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    writing_duration_sec, file_relpath, content_hash, synced_at, deleted,
+                    location, weather, temp_c, context_source, context_updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(entry_date) DO UPDATE SET
                     title=excluded.title,
                     word_count=excluded.word_count,
@@ -136,7 +168,12 @@ class Database:
                     writing_duration_sec=excluded.writing_duration_sec,
                     file_relpath=excluded.file_relpath,
                     content_hash=excluded.content_hash,
-                    deleted=excluded.deleted
+                    deleted=excluded.deleted,
+                    location=excluded.location,
+                    weather=excluded.weather,
+                    temp_c=excluded.temp_c,
+                    context_source=excluded.context_source,
+                    context_updated_at=excluded.context_updated_at
                 """,
                 (
                     meta.id,
@@ -150,9 +187,13 @@ class Database:
                     meta.content_hash,
                     meta.synced_at,
                     meta.deleted,
+                    meta.location or "",
+                    meta.weather or "",
+                    meta.temp_c,
+                    meta.context_source or "",
+                    meta.context_updated_at or "",
                 ),
             )
-            # Keep FTS in sync by entry_date (stable key for local v1).
             cur.execute("DELETE FROM entries_fts WHERE entry_date = ?", (meta.entry_date,))
             cur.execute(
                 """
@@ -210,7 +251,6 @@ class Database:
         q = query.strip()
         if not q:
             return []
-        # Prefer LIKE for CJK / mixed text (FTS unicode61 is weak on Chinese).
         like = f"%{q}%"
         rows = self._conn.execute(
             """
@@ -226,7 +266,6 @@ class Database:
             (like, like, limit),
         ).fetchall()
 
-        # Optional FTS pass for latin tokens if LIKE found nothing.
         if not rows:
             safe = q.replace('"', " ").replace("'", " ")
             tokens = [t for t in safe.split() if t]
@@ -251,7 +290,6 @@ class Database:
         hits: list[SearchHit] = []
         for r in rows:
             snippet = r["snippet"] or ""
-            # Soft-highlight keyword markers for UI.
             if q and q in snippet and "«" not in snippet:
                 snippet = snippet.replace(q, f"«{q}»")
             hits.append(
@@ -283,6 +321,8 @@ class Database:
 
     @staticmethod
     def _row_to_meta(row: sqlite3.Row) -> EntryMeta:
+        keys = row.keys()
+        temp = row["temp_c"] if "temp_c" in keys else None
         return EntryMeta(
             id=row["id"],
             entry_date=row["entry_date"],
@@ -295,6 +335,17 @@ class Database:
             content_hash=row["content_hash"],
             synced_at=row["synced_at"],
             deleted=row["deleted"],
+            location=row["location"] if "location" in keys and row["location"] else "",
+            weather=row["weather"] if "weather" in keys and row["weather"] else "",
+            temp_c=float(temp) if temp is not None else None,
+            context_source=(
+                row["context_source"] if "context_source" in keys and row["context_source"] else ""
+            ),
+            context_updated_at=(
+                row["context_updated_at"]
+                if "context_updated_at" in keys and row["context_updated_at"]
+                else ""
+            ),
         )
 
 

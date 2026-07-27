@@ -1,151 +1,227 @@
 """
-Theme stylesheets — Day One inspired calm cards & whitespace.
+Theme stylesheets — quiet ink journal: cool paper, moss accent, soft hierarchy.
 """
 from __future__ import annotations
 
+# Cool mist paper + deep moss — not warm cream, not electric blue.
 LIGHT = {
-    "bg": "#F3F1EC",
-    "surface": "#FFFFFF",
-    "sidebar": "#EBE8E1",
-    "border": "#DDD8CE",
-    "text": "#1C1B19",
-    "muted": "#6F6A60",
-    "accent": "#2F6FED",
-    "accent_soft": "#E8F0FF",
-    "dot": "#2F6FED",
-    "today": "#2F6FED",
-    "danger": "#C62828",
-    "input": "#FFFFFF",
-    "hover": "#E4E0D7",
-    "card": "#FFFFFF",
-    "selection": "#D6E4FF",
+    "bg": "#F2F4F1",
+    "surface": "#FBFCFB",
+    "sidebar": "#E8EBE7",
+    "border": "#D2D8D2",
+    "text": "#1B221E",
+    "muted": "#6A746C",
+    "accent": "#3F6B58",
+    "accent_soft": "#DCE8E1",
+    "dot": "#3F6B58",
+    "today": "#3F6B58",
+    "danger": "#A33B3B",
+    "input": "#FBFCFB",
+    "hover": "#DDE3DD",
+    "card": "#F6F8F5",
+    "selection": "#C9DCD2",
 }
 
 DARK = {
-    "bg": "#161718",
-    "surface": "#1E1F21",
-    "sidebar": "#121314",
-    "border": "#2A2B2E",
-    "text": "#EDECE8",
-    "muted": "#9A9690",
-    "accent": "#6B9BFF",
-    "accent_soft": "#243247",
-    "dot": "#6B9BFF",
-    "today": "#6B9BFF",
-    "danger": "#EF9A9A",
-    "input": "#232426",
-    "hover": "#262729",
-    "card": "#222325",
-    "selection": "#2A3A55",
+    "bg": "#121614",
+    "surface": "#1A1F1C",
+    "sidebar": "#0F1311",
+    "border": "#2A322D",
+    "text": "#E6EBE7",
+    "muted": "#8E9891",
+    "accent": "#7FAE97",
+    "accent_soft": "#24332C",
+    "dot": "#7FAE97",
+    "today": "#7FAE97",
+    "danger": "#E08A8A",
+    "input": "#1F2622",
+    "hover": "#232A26",
+    "card": "#1C221F",
+    "selection": "#2F4339",
 }
 
 
 def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
-    font = "Consolas, 'Cascadia Mono', 'Courier New', monospace" if mono else (
-        "'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', sans-serif"
-    )
-    editor_font = "Consolas, 'Cascadia Mono', monospace" if mono else font
+    from utils.fonts import css_stack
+
+    # 全部使用霞鹜文楷；mono 仅略收紧字号，不再切等宽。
+    family = css_stack()
+    ui_font = family
+    display_font = family
+    editor_font = family
+    editor_size = "15px" if mono else "16px"
     p = palette
     return f"""
     * {{
-        font-family: {font};
+        font-family: {ui_font};
     }}
     QMainWindow, QWidget#centralRoot {{
         background: {p['bg']};
         color: {p['text']};
     }}
+    QMenuBar {{
+        background: {p['bg']};
+        color: {p['text']};
+        border-bottom: 1px solid {p['border']};
+        padding: 2px 6px;
+    }}
+    QMenuBar::item:selected {{
+        background: {p['hover']};
+        border-radius: 4px;
+    }}
+    QMenu {{
+        background: {p['surface']};
+        color: {p['text']};
+        border: 1px solid {p['border']};
+        padding: 4px;
+    }}
+    QMenu::item:selected {{
+        background: {p['accent_soft']};
+        color: {p['accent']};
+    }}
     QWidget#sidebar {{
         background: {p['sidebar']};
         border-right: 1px solid {p['border']};
     }}
+    QLabel#brandMark {{
+        color: {p['text']};
+        font-family: {display_font};
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 3px;
+        padding: 2px 0 10px 0;
+    }}
     QWidget#editorPane {{
         background: {p['bg']};
     }}
-    QFrame#card, QListWidget, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox {{
+    QFrame#card, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox {{
         background: {p['surface']};
         color: {p['text']};
         border: 1px solid {p['border']};
-        border-radius: 10px;
+        border-radius: 8px;
     }}
     QPlainTextEdit#diaryEditor {{
         background: {p['surface']};
         border: none;
-        border-radius: 14px;
-        padding: 22px 28px;
-        font-size: 15px;
+        border-radius: 12px;
+        padding: 24px 30px;
+        font-size: {editor_size};
+        line-height: 1.55;
         font-family: {editor_font};
         selection-background-color: {p['selection']};
     }}
     QTextBrowser#diaryPreview {{
         background: {p['surface']};
         border: none;
-        border-radius: 14px;
-        padding: 18px 24px;
+        border-radius: 12px;
+        padding: 20px 26px;
         color: {p['text']};
     }}
     QLabel#dateHeading {{
-        font-size: 22px;
-        font-weight: 600;
+        font-family: {display_font};
+        font-size: 26px;
+        font-weight: 700;
         color: {p['text']};
-        padding: 4px 0;
-    }}
-    QToolButton:checked {{
-        background: {p['accent_soft']};
-        color: {p['accent']};
+        padding: 2px 0;
+        letter-spacing: 1px;
     }}
     QLabel#metaLabel {{
         color: {p['muted']};
-        font-size: 12px;
+        font-size: 14px;
+        font-weight: 400;
+    }}
+    QLabel#contextLabel {{
+        color: {p['accent']};
+        font-size: 14px;
+        font-weight: 400;
+        padding: 2px 0 4px 0;
+    }}
+    QLabel#contextLabel[empty="true"] {{
+        color: {p['muted']};
+    }}
+    QLabel#filmThumb {{
+        background: {p['hover']};
+        border: 1px solid {p['border']};
+        border-radius: 10px;
+    }}
+    QWidget#imageFilmstrip {{
+        background: transparent;
     }}
     QLabel#sectionLabel {{
         color: {p['muted']};
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.6px;
-        text-transform: uppercase;
+        font-size: 13px;
+        font-weight: 700;
+        letter-spacing: 1.4px;
     }}
     QPushButton {{
         background: transparent;
-        color: {p['text']};
-        border: 1px solid transparent;
-        border-radius: 8px;
+        color: {p['muted']};
+        border: none;
+        border-radius: 6px;
         padding: 6px 10px;
+        font-size: 13px;
     }}
     QPushButton:hover {{
         background: {p['hover']};
+        color: {p['text']};
     }}
-    QPushButton:checked {{
-        background: {p['accent_soft']};
-        color: {p['accent']};
+    QPushButton#navTab {{
+        color: {p['muted']};
+        background: transparent;
+        border-top: 2px solid transparent;
+        border-right: 2px solid transparent;
+        border-left: 2px solid transparent;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        padding: 8px 4px 7px 4px;
+        font-size: 14px;
+        font-weight: 400;
     }}
-    QPushButton#primaryBtn {{
-        background: {p['accent']};
-        color: white;
-        border: none;
-        padding: 8px 14px;
+    QPushButton#navTab:hover {{
+        color: {p['text']};
+        background: transparent;
     }}
-    QPushButton#primaryBtn:hover {{
-        background: {p['accent']};
-        opacity: 0.9;
+    QPushButton#navTab:checked {{
+        color: {p['text']};
+        background: transparent;
+        border-bottom: 2px solid {p['accent']};
+        font-weight: 700;
+    }}
+    QPushButton#toolBtn {{
+        color: {p['muted']};
+        font-size: 13px;
+        padding: 6px 8px;
+    }}
+    QPushButton#toolBtn:hover {{
+        color: {p['text']};
+        background: {p['hover']};
     }}
     QToolButton {{
         background: transparent;
         color: {p['muted']};
         border: none;
-        border-radius: 6px;
+        border-radius: 5px;
         padding: 6px 8px;
-        font-weight: 600;
+        font-weight: 700;
+        font-size: 13px;
     }}
     QToolButton:hover {{
         background: {p['hover']};
         color: {p['text']};
     }}
+    QToolButton:checked {{
+        background: {p['accent_soft']};
+        color: {p['accent']};
+    }}
     QLineEdit#searchBox {{
         background: {p['input']};
         border: 1px solid {p['border']};
         border-radius: 8px;
-        padding: 8px 12px;
-        font-size: 13px;
+        padding: 9px 12px;
+        font-size: 14px;
+    }}
+    QLineEdit#searchBox:focus {{
+        border: 1px solid {p['accent']};
     }}
     QListWidget {{
         border: none;
@@ -153,15 +229,18 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         outline: none;
     }}
     QListWidget::item {{
-        background: {p['card']};
-        border: 1px solid {p['border']};
-        border-radius: 10px;
-        margin: 4px 2px;
-        padding: 10px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid {p['border']};
+        border-radius: 0;
+        margin: 0;
+        padding: 12px 4px;
+        color: {p['text']};
     }}
     QListWidget::item:selected {{
         background: {p['accent_soft']};
-        border: 1px solid {p['accent']};
+        color: {p['text']};
+        border-bottom: 1px solid {p['accent_soft']};
     }}
     QListWidget::item:hover {{
         background: {p['hover']};
@@ -170,14 +249,30 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         background: transparent;
         border: none;
     }}
-    QCalendarWidget QWidget {{
-        alternate-background-color: {p['sidebar']};
+    QCalendarWidget QWidget#qt_calendar_navigationbar {{
+        background: transparent;
+        border: none;
+        min-height: 36px;
     }}
     QCalendarWidget QToolButton {{
         color: {p['text']};
         background: transparent;
-        font-weight: 600;
-        padding: 4px 8px;
+        font-family: {display_font};
+        font-size: 15px;
+        font-weight: 700;
+        padding: 4px 6px;
+        border-radius: 6px;
+    }}
+    QCalendarWidget QToolButton:hover {{
+        background: {p['hover']};
+    }}
+    QCalendarWidget QToolButton#qt_calendar_prevmonth,
+    QCalendarWidget QToolButton#qt_calendar_nextmonth {{
+        color: {p['muted']};
+        font-size: 16px;
+        font-weight: 400;
+        qproperty-icon: none;
+        qproperty-text: "";
     }}
     QCalendarWidget QMenu {{
         background: {p['surface']};
@@ -185,44 +280,58 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     }}
     QCalendarWidget QSpinBox {{
         color: {p['text']};
-        background: {p['input']};
-        border: 1px solid {p['border']};
-        border-radius: 4px;
+        background: transparent;
+        border: none;
+        font-family: {display_font};
+        font-size: 14px;
+        font-weight: 700;
+    }}
+    QCalendarWidget QWidget {{
+        alternate-background-color: transparent;
     }}
     QCalendarWidget QAbstractItemView:enabled {{
         color: {p['text']};
-        background: {p['surface']};
-        selection-background-color: {p['accent']};
-        selection-color: white;
+        background: transparent;
+        selection-background-color: transparent;
+        selection-color: {p['text']};
         outline: none;
-        border-radius: 8px;
+        font-size: 14px;
+    }}
+    QCalendarWidget QAbstractItemView:disabled {{
+        color: {p['muted']};
     }}
     QComboBox {{
         padding: 6px 10px;
         border-radius: 8px;
+        background: {p['input']};
+        border: 1px solid {p['border']};
+        color: {p['text']};
+        font-size: 13px;
     }}
     QComboBox QAbstractItemView {{
         background: {p['surface']};
         color: {p['text']};
         selection-background-color: {p['accent_soft']};
+        border: 1px solid {p['border']};
     }}
     QScrollBar:vertical {{
         background: transparent;
-        width: 10px;
+        width: 8px;
         margin: 0;
     }}
     QScrollBar::handle:vertical {{
         background: {p['border']};
-        border-radius: 5px;
-        min-height: 30px;
+        border-radius: 4px;
+        min-height: 28px;
     }}
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
         height: 0;
     }}
     QStatusBar {{
-        background: {p['sidebar']};
+        background: {p['bg']};
         color: {p['muted']};
         border-top: 1px solid {p['border']};
+        font-size: 13px;
     }}
     QSplitter::handle {{
         background: {p['border']};

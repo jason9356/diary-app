@@ -20,6 +20,7 @@ from PySide6.QtWidgets import QApplication
 from app.config import load_config
 from app.diary_service import DiaryService
 from ui.main_window import MainWindow
+from utils.fonts import app_font
 from utils.logger import setup_logging
 from utils.paths import default_log_dir
 
@@ -36,6 +37,7 @@ def main() -> int:
     app.setApplicationName("Diary")
     app.setOrganizationName("PersonalDiary")
     app.setQuitOnLastWindowClosed(True)
+    app.setFont(app_font(12))
 
     service = DiaryService(config)
     window = MainWindow(config, service)
