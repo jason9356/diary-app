@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#3F6B58</color>
+    <style name="Theme.DiaryAndroid" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#F2F4F1</item>
+        <item name="android:navigationBarColor">#F2F4F1</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

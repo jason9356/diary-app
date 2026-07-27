@@ -10,6 +10,7 @@
 - 预览图片版式：单图通栏、连续多图双列
 - 日记地点 / 天气 / 温度（标题下展示；YAML + SQLite；手机来源优先生效）
 - 电脑端 Open-Meteo 自动取天气（可配置 `weather_city`，可选手填）
+- **Android 客户端骨架**（`android/`）：同设计语言、本地 Markdown 协议、自动定位天气、插图；与桌面代码隔离
 
 ### Changed
 

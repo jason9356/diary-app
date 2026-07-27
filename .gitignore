@@ -34,6 +34,13 @@ logs/**
 .DS_Store
 Thumbs.db
 
+# Android (see also android/.gitignore)
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/*.iml
+
 # Exports / temp
 *.zip
 .tmp/

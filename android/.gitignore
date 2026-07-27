@@ -1,0 +1,11 @@
+# Android client (isolated from desktop Python app)
+android/.gradle/
+android/**/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/captures/
+android/.cxx/
+
+# Large bundled font can be re-downloaded; keep if present
+# android/app/src/main/res/font/*.ttf
