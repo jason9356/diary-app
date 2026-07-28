@@ -5,8 +5,11 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.personaldiary.android.DiaryApplication
+import com.personaldiary.android.data.DayContext
+import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.DiaryRepository
+import com.personaldiary.android.data.TimelineDay
 import com.personaldiary.android.sync.SyncClient
 import com.personaldiary.android.sync.SyncPrefs
 import com.personaldiary.android.weather.LocationHelper
@@ -23,8 +26,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 data class DiaryUiState(
-    val entry: DiaryEntry = DiaryEntry(entryDate = DiaryEntry.today()),
-    val timeline: List<DiaryEntry> = emptyList(),
+    val entry: DiaryEntry? = null,
+    val dayContext: DayContext = DayContext(date = DiaryDates.today()),
+    val dayNotes: List<DiaryEntry> = emptyList(),
+    val timeline: List<TimelineDay> = emptyList(),
+    val selectedDate: String = DiaryDates.today(),
     val saving: Boolean = false,
     val weatherLoading: Boolean = false,
     val syncing: Boolean = false,
@@ -53,28 +59,54 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private var autosaveJob: Job? = null
 
     init {
-        openDate(DiaryEntry.today())
+        refreshTimeline()
     }
 
-    fun openDate(entryDate: String) {
-        val entry = repo.getOrCreate(entryDate)
-        val isNewToday =
-            entryDate == DiaryEntry.today() && !entry.hasContext
+    fun refreshTimeline() {
+        _state.update { it.copy(timeline = repo.listTimeline()) }
+    }
+
+    fun openDay(entryDate: String) {
+        val context = repo.getDayContext(entryDate)
+        val notes = repo.listForDate(entryDate)
         _state.update {
             it.copy(
-                entry = entry,
-                timeline = repo.listEntries(),
+                selectedDate = entryDate,
+                dayContext = context,
+                dayNotes = notes,
                 status = "已打开 $entryDate",
                 needLocationPermission = false,
             )
         }
-        if (isNewToday) {
-            captureContextOnce()
+        if (entryDate == DiaryDates.today() && !context.hasContext) {
+            captureContextOnce(entryDate)
         }
     }
 
+    fun openNote(entryId: String) {
+        val entry = repo.getById(entryId) ?: return
+        val context = repo.getDayContext(entry.entryDate)
+        _state.update {
+            it.copy(
+                entry = entry,
+                selectedDate = entry.entryDate,
+                dayContext = context,
+                dayNotes = repo.listForDate(entry.entryDate),
+                status = "编辑中",
+            )
+        }
+    }
+
+    fun createNote(entryDate: String): String {
+        val entry = repo.createNote(entryDate)
+        openDay(entryDate)
+        _state.update { it.copy(entry = entry, status = "新笔记") }
+        return entry.id
+    }
+
     fun onBodyChange(text: String) {
-        _state.update { it.copy(entry = it.entry.copy(body = text)) }
+        val current = _state.value.entry ?: return
+        _state.update { it.copy(entry = current.copy(body = text)) }
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(500)
@@ -83,20 +115,19 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveNow() {
-        val current = _state.value.entry
+        val current = _state.value.entry ?: return
         val saved = repo.save(current)
+        val context = repo.getDayContext(current.entryDate)
         _state.update {
             it.copy(
                 entry = saved,
-                timeline = repo.listEntries(),
+                dayNotes = repo.listForDate(current.entryDate),
+                dayContext = context,
+                timeline = repo.listTimeline(),
                 saving = false,
                 status = "已保存",
             )
         }
-    }
-
-    fun refreshTimeline() {
-        _state.update { it.copy(timeline = repo.listEntries()) }
     }
 
     fun saveSyncSettings(endpoint: String, token: String) {
@@ -111,33 +142,39 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun syncNow() {
+    fun syncNow(entryDate: String? = null) {
         viewModelScope.launch {
             saveNow()
+            val date = entryDate ?: _state.value.selectedDate
             _state.update { it.copy(syncing = true, status = "正在同步…") }
-            val date = _state.value.entry.entryDate
             val result = withContext(Dispatchers.IO) { syncClient.sync(date) }
-            openDate(date)
+            openDay(date)
             _state.update {
                 it.copy(
                     syncing = false,
                     status = result.message,
-                    timeline = repo.listEntries(),
+                    timeline = repo.listTimeline(),
+                    dayNotes = repo.listForDate(date),
+                    dayContext = repo.getDayContext(date),
                 )
             }
+            _state.value.entry?.let { openNote(it.id) }
         }
     }
 
-    fun addImage(uri: Uri) {
+    fun addImage(uri: Uri, onInserted: (String) -> Unit) {
         viewModelScope.launch {
             try {
-                val date = _state.value.entry.entryDate
-                repo.save(_state.value.entry)
-                val (saved, _) = repo.saveImage(getApplication(), date, uri)
+                val entry = _state.value.entry ?: return@launch
+                repo.save(entry)
+                val rel = repo.saveImage(getApplication(), entry.id, entry.entryDate, uri)
+                onInserted(rel)
+                val saved = repo.getById(entry.id) ?: entry
                 _state.update {
                     it.copy(
                         entry = saved,
-                        timeline = repo.listEntries(),
+                        dayNotes = repo.listForDate(entry.entryDate),
+                        timeline = repo.listTimeline(),
                         status = "已插入图片",
                     )
                 }
@@ -147,9 +184,9 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun captureContextOnce() {
+    private fun captureContextOnce(entryDate: String) {
         viewModelScope.launch {
-            if (_state.value.entry.hasContext) return@launch
+            if (repo.getDayContext(entryDate).hasContext) return@launch
             if (!locationHelper.hasPermission()) {
                 _state.update { it.copy(needLocationPermission = true) }
                 return@launch
@@ -162,8 +199,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 return@launch
             }
-            val date = _state.value.entry.entryDate
-            if (date != DiaryEntry.today() || _state.value.entry.hasContext) {
+            if (entryDate != DiaryDates.today()) {
                 _state.update { it.copy(weatherLoading = false) }
                 return@launch
             }
@@ -173,19 +209,17 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 _state.update { it.copy(weatherLoading = false, status = "天气获取失败") }
                 return@launch
             }
-            if (_state.value.entry.hasContext || _state.value.entry.entryDate != date) {
+            if (repo.getDayContext(entryDate).hasContext) {
                 _state.update { it.copy(weatherLoading = false) }
                 return@launch
             }
-            val saved = repo.saveContext(date, snap)
-            val merged = saved.copy(body = _state.value.entry.body)
-            repo.save(merged)
+            val ctx = repo.saveContext(entryDate, snap)
             _state.update {
                 it.copy(
-                    entry = merged.copy(imageRels = repo.getOrCreate(merged.entryDate).imageRels),
+                    dayContext = ctx,
                     weatherLoading = false,
-                    status = "已记录 · ${merged.contextLine()}",
-                    timeline = repo.listEntries(),
+                    status = "已记录 · ${ctx.contextLine()}",
+                    timeline = repo.listTimeline(),
                 )
             }
         }
@@ -193,10 +227,9 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPermissionResult(granted: Boolean) {
         if (granted) {
-            if (_state.value.entry.entryDate == DiaryEntry.today() &&
-                !_state.value.entry.hasContext
-            ) {
-                captureContextOnce()
+            val date = _state.value.selectedDate
+            if (date == DiaryDates.today() && !_state.value.dayContext.hasContext) {
+                captureContextOnce(date)
             }
         } else {
             _state.update { it.copy(needLocationPermission = false, status = "未授予定位权限") }

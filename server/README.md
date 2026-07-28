@@ -1,6 +1,6 @@
 # Diary Sync API
 
-单用户同步服务。契约见 [docs/sync-protocol.md](../docs/sync-protocol.md)。
+单用户同步服务（协议 **v2**：按笔记 `id` 同步，一天可多条）。契约见 [docs/sync-protocol.md](../docs/sync-protocol.md)。
 
 ## 本地运行
 

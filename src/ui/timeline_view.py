@@ -21,7 +21,7 @@ from app.diary_service import DiaryEntry, DiaryService
 
 
 class TimelinePanel(QWidget):
-    entry_activated = Signal(str)
+    entry_activated = Signal(str)  # entry id
     filter_changed = Signal(object, object)  # year|None, month|None
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -89,24 +89,31 @@ class TimelinePanel(QWidget):
             summary = service.summary_text(entry.body)
             text = f"{entry.entry_date}\n{entry.title}\n{summary}"
             item = QListWidgetItem(text)
-            item.setData(Qt.ItemDataRole.UserRole, entry.entry_date)
+            item.setData(Qt.ItemDataRole.UserRole, entry.id)
             thumb = self._thumbnail(entry, service)
             if thumb is not None:
                 item.setIcon(QIcon(thumb))
             item.setSizeHint(QSize(0, 68))
             self.list.addItem(item)
 
+    def select_entry(self, entry_id: str) -> None:
+        for i in range(self.list.count()):
+            item = self.list.item(i)
+            if item and item.data(Qt.ItemDataRole.UserRole) == entry_id:
+                self.list.setCurrentItem(item)
+                return
+
     def select_date(self, entry_date: str) -> None:
         for i in range(self.list.count()):
             item = self.list.item(i)
-            if item and item.data(Qt.ItemDataRole.UserRole) == entry_date:
+            if item and item.text().startswith(entry_date):
                 self.list.setCurrentItem(item)
                 return
 
     def _on_click(self, item: QListWidgetItem) -> None:
-        date_key = item.data(Qt.ItemDataRole.UserRole)
-        if date_key:
-            self.entry_activated.emit(date_key)
+        entry_id = item.data(Qt.ItemDataRole.UserRole)
+        if entry_id:
+            self.entry_activated.emit(entry_id)
 
     @staticmethod
     def _thumbnail(entry: DiaryEntry, service: DiaryService) -> QPixmap | None:

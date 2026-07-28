@@ -1,6 +1,7 @@
 data/
 data-dev/
 data-test/
+data-v2-test/
 __pycache__/
 *.pyc
 .venv/

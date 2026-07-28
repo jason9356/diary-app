@@ -10,6 +10,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QDoubleSpinBox,
@@ -163,6 +164,25 @@ class MainWindow(QMainWindow):
         editor_pane.setObjectName("editorPane")
         editor_layout = QVBoxLayout(editor_pane)
         editor_layout.setContentsMargins(0, 0, 0, 0)
+
+        note_bar = QHBoxLayout()
+        note_bar.setContentsMargins(12, 8, 12, 0)
+        note_bar.setSpacing(8)
+        self.note_combo = QComboBox()
+        self.note_combo.setObjectName("noteCombo")
+        self.note_combo.setMinimumWidth(160)
+        self.note_combo.currentIndexChanged.connect(self._on_note_selected)
+        self.btn_new_note = QPushButton("新建笔记")
+        self.btn_new_note.setObjectName("toolBtn")
+        self.btn_new_note.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_new_note.setFlat(True)
+        self.btn_new_note.clicked.connect(self.new_note)
+        note_bar.addWidget(self.note_combo, 1)
+        note_bar.addWidget(self.btn_new_note)
+        editor_layout.addLayout(note_bar)
+
+        self._note_switching = False
+
         self.editor = DiaryEditor(
             autosave_ms=self.config.autosave_ms,
             data_root=self.config.data_path,
@@ -252,7 +272,7 @@ class MainWindow(QMainWindow):
         self.calendar_panel.date_selected.connect(self.open_date)
         self.calendar_panel.month_changed.connect(self._on_month_changed)
 
-        self.timeline_panel.entry_activated.connect(self.open_date)
+        self.timeline_panel.entry_activated.connect(self.open_note)
         self.timeline_panel.filter_changed.connect(self._on_timeline_filter)
 
         self.search_panel.query_changed.connect(self._on_search)
@@ -351,7 +371,7 @@ class MainWindow(QMainWindow):
         month = self.timeline_panel.month_combo.currentData()
         entries = self.service.timeline(year=year, month=month)
         self.timeline_panel.populate(entries, self.service)
-        self.timeline_panel.select_date(self._current_date)
+        self.timeline_panel.select_entry(self._entry_id)
 
     def _on_month_changed(self, year: int, month: int) -> None:
         dates = self.service.dates_with_content(year=year, month=month)
@@ -363,30 +383,80 @@ class MainWindow(QMainWindow):
 
     # ----- Entry load / save -----
 
-    def open_date(self, entry_date: str, focus: bool = True) -> None:
-        if entry_date == self._current_date and self.editor.is_dirty():
+    def _refresh_note_list(self, select_id: str | None = None) -> None:
+        self._note_switching = True
+        self.note_combo.clear()
+        notes = self.service.list_for_date(self._current_date)
+        for note in notes:
+            label = note.title if note.title != note.entry_date else f"笔记 {note.id[:8]}"
+            if note.word_count > 0 and note.title == note.entry_date:
+                label = self.service.summary_text(note.body, 30) or label
+            self.note_combo.addItem(label, note.id)
+        if select_id:
+            idx = self.note_combo.findData(select_id)
+            if idx >= 0:
+                self.note_combo.setCurrentIndex(idx)
+        elif notes:
+            self.note_combo.setCurrentIndex(0)
+        self._note_switching = False
+
+    def _on_note_selected(self, index: int) -> None:
+        if self._note_switching or index < 0 or self._loading:
+            return
+        entry_id = self.note_combo.itemData(index)
+        if entry_id and entry_id != self._entry_id:
+            self.open_note(str(entry_id), focus=False)
+
+    def new_note(self) -> None:
+        if self.editor.is_dirty():
             self.save_current()
-        elif self.editor.is_dirty():
+        entry = self.service.create_entry(self._current_date)
+        self._refresh_note_list(select_id=entry.id)
+        self.open_note(entry.id, focus=True)
+
+    def open_date(self, entry_date: str, focus: bool = True) -> None:
+        if entry_date != self._current_date and self.editor.is_dirty():
+            self.save_current()
+        elif entry_date == self._current_date and self.editor.is_dirty():
             self.save_current()
 
+        self._current_date = entry_date
+        notes = self.service.list_for_date(entry_date)
+        if notes:
+            self._refresh_note_list(select_id=notes[0].id)
+            self.open_note(notes[0].id, focus=focus)
+        else:
+            self._refresh_note_list()
+            self._load_entry(self.service.get_or_create(entry_date), focus=focus)
+
+    def open_note(self, entry_id: str, focus: bool = True) -> None:
+        if entry_id != self._entry_id and self.editor.is_dirty():
+            self.save_current()
+        entry = self.service.get_by_id(entry_id)
+        if entry is None:
+            return
+        self._current_date = entry.entry_date
+        self._refresh_note_list(select_id=entry_id)
+        self._load_entry(entry, focus=focus)
+
+    def _load_entry(self, entry, *, focus: bool) -> None:
         self._loading = True
-        entry = self.service.get_or_create(entry_date)
         self._current_date = entry.entry_date
         self._entry_id = entry.id
         self._created_at = entry.created_at
         self._context_source = entry.context_source
         self.timer.start_session(entry.writing_duration_sec)
 
-        heading = self._format_heading(entry_date)
+        heading = self._format_heading(entry.entry_date)
         meta = self._format_meta(entry.created_at, entry.updated_at, entry.writing_duration_sec)
         self.editor.set_heading(heading, meta)
         self.editor.set_context(entry.location, entry.weather, entry.temp_c)
-        self.editor.set_day_images(self.service.list_image_rels(entry_date))
+        self.editor.set_day_images(self.service.list_image_rels(entry.id))
         self.editor.set_markdown(entry.body)
         self._loading = False
 
-        self.calendar_panel.set_selected_date(entry_date)
-        self.timeline_panel.select_date(entry_date)
+        self.calendar_panel.set_selected_date(entry.entry_date)
+        self.timeline_panel.select_entry(entry.id)
         if self._search_keyword:
             highlight_in_editor(self.editor.editor, self._search_keyword)
         else:
@@ -394,10 +464,9 @@ class MainWindow(QMainWindow):
 
         if focus:
             self.editor.focus_editor()
-        self._set_status(f"已打开 {entry_date}")
+        self._set_status(f"已打开 {entry.entry_date}")
 
-        # Auto weather only when creating today's entry with empty context.
-        if entry_date == self.service.today() and not (
+        if entry.entry_date == self.service.today() and not (
             entry.location or entry.weather or entry.temp_c is not None
         ):
             self.fetch_weather(force_prompt=False, silent=True)
@@ -406,9 +475,8 @@ class MainWindow(QMainWindow):
         if self._loading:
             return
         body = self.editor.markdown()
-        # Do not create empty files when browsing a blank day.
-        existing = self.service.db.get_by_date(self._current_date)
-        if not body.strip() and existing is None and not self.md_exists_on_disk():
+        existing = self.service.db.get_by_id(self._entry_id)
+        if not body.strip() and existing is None:
             self.editor.mark_clean()
             return
         entry = self.service.save(
@@ -425,15 +493,15 @@ class MainWindow(QMainWindow):
         meta = self._format_meta(entry.created_at, entry.updated_at, entry.writing_duration_sec)
         self.editor.set_heading(self._format_heading(entry.entry_date), meta)
         self.editor.set_context(entry.location, entry.weather, entry.temp_c)
-        self.editor.set_day_images(self.service.list_image_rels(entry.entry_date))
-        # Refresh dots without heavy timeline rebuild every keystroke-save
+        self.editor.set_day_images(self.service.list_image_rels(entry.id))
+        self._refresh_note_list(select_id=entry.id)
         self.calendar_panel.set_entry_dates(self.service.dates_with_content())
         if self.timeline_panel.isVisible():
             self.refresh_timeline()
         self._set_status(f"已保存 · {datetime.now().strftime('%H:%M:%S')}")
 
     def md_exists_on_disk(self) -> bool:
-        return self.service.md.exists(self._current_date)
+        return self.service.md.exists(self._entry_id, self._current_date)
 
     def _on_edit_activity(self) -> None:
         if self._loading:
@@ -450,10 +518,10 @@ class MainWindow(QMainWindow):
 
     def _on_image_dropped(self, path: str) -> None:
         try:
-            rel = self.service.save_dropped_image(self._current_date, Path(path))
+            rel = self.service.save_dropped_image(self._entry_id, Path(path))
             self.editor.insert_image_markdown(rel)
             self.save_current()
-            self.editor.set_day_images(self.service.list_image_rels(self._current_date))
+            self.editor.set_day_images(self.service.list_image_rels(self._entry_id))
             self._set_status(f"已插入图片 {Path(rel).name}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Image drop failed")
@@ -470,8 +538,8 @@ class MainWindow(QMainWindow):
             self._on_image_dropped(path)
 
     def _on_context_clicked(self) -> None:
-        entry = self.service.get_or_create(self._current_date)
-        if entry.location or entry.weather or entry.temp_c is not None:
+        ctx = self.service.get_day_context(self._current_date)
+        if ctx.location or ctx.weather or ctx.temp_c is not None:
             self.edit_context()
         else:
             self.fetch_weather(force_prompt=True, silent=False)
@@ -546,38 +614,32 @@ class MainWindow(QMainWindow):
             # Persist a usable city label for next time (first segment).
             self.config.weather_city = snap.location.split("·")[0]
             save_config(self.config)
-        entry = self.service.save_context(
+        ctx = self.service.save_context(
             self._current_date,
             location=snap.location,
             weather=snap.weather,
             temp_c=snap.temp_c,
             context_source="desktop",
-            body=self.editor.markdown(),
-            writing_duration_sec=self.timer.seconds(),
-            entry_id=self._entry_id,
-            created_at=self._created_at,
         )
-        if entry is None:
+        if ctx is None:
             return
-        self._entry_id = entry.id
-        self._created_at = entry.created_at
-        self._context_source = entry.context_source
-        self.editor.set_context(entry.location, entry.weather, entry.temp_c)
-        self._set_status(f"天气已更新 · {entry.location} {entry.weather} {entry.temp_c:g}°")
+        self._context_source = ctx.context_source
+        self.editor.set_context(ctx.location, ctx.weather, ctx.temp_c)
+        self._set_status(f"天气已更新 · {ctx.location} {ctx.weather} {ctx.temp_c:g}°")
 
     def edit_context(self) -> None:
-        entry = self.service.get_or_create(self._current_date)
+        ctx = self.service.get_day_context(self._current_date)
         dlg = QDialog(self)
         dlg.setWindowTitle("地点 / 天气")
         form = QFormLayout(dlg)
-        loc = QLineEdit(entry.location)
-        wx = QLineEdit(entry.weather)
+        loc = QLineEdit(ctx.location)
+        wx = QLineEdit(ctx.weather)
         temp = QDoubleSpinBox()
         temp.setRange(-80, 60)
         temp.setDecimals(1)
         temp.setSuffix(" °C")
-        if entry.temp_c is not None:
-            temp.setValue(float(entry.temp_c))
+        if ctx.temp_c is not None:
+            temp.setValue(float(ctx.temp_c))
         else:
             temp.setValue(20.0)
         form.addRow("地点", loc)
@@ -608,16 +670,11 @@ class MainWindow(QMainWindow):
             weather=wx.text().strip(),
             temp_c=float(temp.value()),
             context_source="manual",
-            body=self.editor.markdown(),
-            writing_duration_sec=self.timer.seconds(),
-            entry_id=self._entry_id,
-            created_at=self._created_at,
             force=self._context_source != "phone",
         )
         if saved is None:
             QMessageBox.information(self, "地点 / 天气", "该日数据来自手机端，未覆盖。")
             return
-        self._entry_id = saved.id
         self._context_source = saved.context_source
         self.editor.set_context(saved.location, saved.weather, saved.temp_c)
         self._set_status("地点 / 天气已保存")
@@ -630,8 +687,10 @@ class MainWindow(QMainWindow):
         self.search_panel.show_results(hits, query)
         highlight_in_editor(self.editor.editor, query)
 
-    def _on_search_open(self, entry_date: str) -> None:
-        self.open_date(entry_date, focus=True)
+    def _on_search_open(self, entry_id: str) -> None:
+        entry = self.service.get_by_id(entry_id)
+        if entry:
+            self.open_note(entry_id, focus=True)
         highlight_in_editor(self.editor.editor, self._search_keyword)
 
     # ----- Sync -----
@@ -684,7 +743,7 @@ class MainWindow(QMainWindow):
         finally:
             QGuiApplication.restoreOverrideCursor()
 
-        self.open_date(self._current_date, focus=False)
+        self.open_note(self._entry_id, focus=False)
         self.refresh_sidebar()
         self._set_status(result.message)
         if result.message.startswith("同步失败") or (

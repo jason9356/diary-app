@@ -66,4 +66,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("com.google.android.gms:play-services-location:21.3.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.mohamedrejeb.richeditor:richeditor-compose:1.0.0-rc10")
 }

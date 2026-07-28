@@ -20,12 +20,18 @@ class FrontMatter:
     id: str = ""
     created_at: str = ""
     updated_at: str = ""
+    writing_duration_sec: int = 0
+
+
+@dataclass
+class DayContext:
+    date: str = ""
     location: str = ""
     weather: str = ""
     temp_c: Optional[float] = None
     context_source: str = ""
     context_updated_at: str = ""
-    writing_duration_sec: int = 0
+    updated_at: str = ""
 
 
 def parse_markdown(text: str) -> tuple[str, FrontMatter]:
@@ -39,12 +45,6 @@ def parse_markdown(text: str) -> tuple[str, FrontMatter]:
             continue
         key, val = line.split(":", 1)
         data[key.strip()] = val.strip().strip('"')
-    temp: Optional[float] = None
-    if data.get("temp_c"):
-        try:
-            temp = float(data["temp_c"])
-        except ValueError:
-            temp = None
     duration = 0
     if data.get("writing_duration_sec"):
         try:
@@ -57,11 +57,6 @@ def parse_markdown(text: str) -> tuple[str, FrontMatter]:
         id=data.get("id", ""),
         created_at=data.get("created_at", ""),
         updated_at=data.get("updated_at", ""),
-        location=data.get("location", ""),
-        weather=data.get("weather", ""),
-        temp_c=temp,
-        context_source=data.get("context_source", ""),
-        context_updated_at=data.get("context_updated_at", ""),
         writing_duration_sec=duration,
     )
     return body, fm
@@ -86,16 +81,6 @@ def render_markdown(body: str, fm: FrontMatter) -> str:
         lines.append(f"created_at: {fm.created_at}")
     if fm.updated_at:
         lines.append(f"updated_at: {fm.updated_at}")
-    if fm.location:
-        lines.append(f"location: {yaml_escape(fm.location)}")
-    if fm.weather:
-        lines.append(f"weather: {yaml_escape(fm.weather)}")
-    if fm.temp_c is not None:
-        lines.append(f"temp_c: {fm.temp_c:g}")
-    if fm.context_source:
-        lines.append(f"context_source: {fm.context_source}")
-    if fm.context_updated_at:
-        lines.append(f"context_updated_at: {fm.context_updated_at}")
     if fm.writing_duration_sec:
         lines.append(f"writing_duration_sec: {fm.writing_duration_sec}")
     lines.append("---")
@@ -111,7 +96,6 @@ def sha256_text(text: str) -> str:
 
 
 def _newer(a: str, b: str) -> bool:
-    """True if a is strictly newer than b (lexicographic ISO works for UTC offsets of same form)."""
     if not a:
         return False
     if not b:
@@ -123,8 +107,7 @@ def merge_entries(
     *,
     server_md: Optional[str],
     incoming_md: str,
-    server_id: str,
-    incoming_id: str,
+    entry_id: str,
     server_updated_at: str,
     incoming_updated_at: str,
     server_created_at: str,
@@ -135,73 +118,41 @@ def merge_entries(
     incoming_deleted: bool,
     server_deleted_at: str,
     incoming_deleted_at: str,
+    fallback_date: str = "",
 ) -> tuple[str, FrontMatter, bool, str]:
-    """
-    Merge incoming into server state.
-    Returns (markdown, front_matter, deleted, deleted_at).
-    First-arriver wins for id when both exist with different ids.
-    """
+    """Merge incoming into server state for one note id. Returns (md, fm, deleted, deleted_at)."""
     in_body, in_fm = parse_markdown(incoming_md)
     if server_md is None:
-        # First write wins for id.
         fm = in_fm
-        if not fm.id:
-            fm.id = incoming_id or server_id
+        fm.id = entry_id
+        if not fm.date:
+            fm.date = fallback_date
         if not fm.updated_at:
             fm.updated_at = incoming_updated_at
         if not fm.created_at:
             fm.created_at = incoming_created_at or fm.updated_at
         fm.writing_duration_sec = max(incoming_duration, fm.writing_duration_sec)
-        if not fm.date and incoming_md:
-            pass
         deleted = incoming_deleted
         deleted_at = incoming_deleted_at if deleted else ""
         return render_markdown(in_body, fm), fm, deleted, deleted_at
 
     srv_body, srv_fm = parse_markdown(server_md)
 
-    # id: server keeps first-arriver
-    winner_id = server_id or srv_fm.id or incoming_id or in_fm.id
-
-    # deletion vs content
     if incoming_deleted and _newer(incoming_deleted_at, server_updated_at or srv_fm.updated_at):
         fm = srv_fm
-        fm.id = winner_id
+        fm.id = entry_id
         return server_md, fm, True, incoming_deleted_at
     if server_deleted and _newer(server_deleted_at, incoming_updated_at or in_fm.updated_at):
         fm = srv_fm
-        fm.id = winner_id
+        fm.id = entry_id
         return server_md, fm, True, server_deleted_at
 
-    # body/title LWW by updated_at
     in_upd = incoming_updated_at or in_fm.updated_at
     srv_upd = server_updated_at or srv_fm.updated_at
     if _newer(in_upd, srv_upd):
         body, title, updated_at = in_body, in_fm.title or srv_fm.title, in_upd
     else:
         body, title, updated_at = srv_body, srv_fm.title or in_fm.title, srv_upd
-
-    # context authority
-    in_rank = CONTEXT_RANK.get(in_fm.context_source or "", 0)
-    srv_rank = CONTEXT_RANK.get(srv_fm.context_source or "", 0)
-    if in_rank > srv_rank or (
-        in_rank == srv_rank and _newer(in_fm.context_updated_at, srv_fm.context_updated_at)
-    ):
-        loc, weather, temp, src, ctx_at = (
-            in_fm.location,
-            in_fm.weather,
-            in_fm.temp_c,
-            in_fm.context_source,
-            in_fm.context_updated_at,
-        )
-    else:
-        loc, weather, temp, src, ctx_at = (
-            srv_fm.location,
-            srv_fm.weather,
-            srv_fm.temp_c,
-            srv_fm.context_source,
-            srv_fm.context_updated_at,
-        )
 
     created = server_created_at or srv_fm.created_at or incoming_created_at or in_fm.created_at
     duration = max(
@@ -210,18 +161,43 @@ def merge_entries(
         srv_fm.writing_duration_sec,
         in_fm.writing_duration_sec,
     )
-    date = srv_fm.date or in_fm.date
+    date = srv_fm.date or in_fm.date or fallback_date
     fm = FrontMatter(
         date=date,
         title=title,
-        id=winner_id,
+        id=entry_id,
         created_at=created,
         updated_at=updated_at,
-        location=loc,
-        weather=weather,
-        temp_c=temp,
-        context_source=src,
-        context_updated_at=ctx_at,
         writing_duration_sec=duration,
     )
     return render_markdown(body, fm), fm, False, ""
+
+
+def merge_day_context(server: Optional[DayContext], incoming: DayContext) -> DayContext:
+    if server is None:
+        out = incoming
+        if not out.updated_at:
+            out.updated_at = out.context_updated_at
+        return out
+    in_rank = CONTEXT_RANK.get(incoming.context_source or "", 0)
+    srv_rank = CONTEXT_RANK.get(server.context_source or "", 0)
+    if in_rank > srv_rank or (
+        in_rank == srv_rank
+        and _newer(incoming.context_updated_at, server.context_updated_at)
+    ):
+        winner = incoming
+    else:
+        winner = server
+    updated = winner.updated_at or winner.context_updated_at
+    if _newer(incoming.updated_at, winner.updated_at):
+        # keep content from context winner; bump updated_at tracking if needed
+        pass
+    return DayContext(
+        date=winner.date or incoming.date or server.date,
+        location=winner.location,
+        weather=winner.weather,
+        temp_c=winner.temp_c,
+        context_source=winner.context_source,
+        context_updated_at=winner.context_updated_at,
+        updated_at=updated or incoming.updated_at or server.updated_at,
+    )

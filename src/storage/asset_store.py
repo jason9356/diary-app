@@ -1,9 +1,9 @@
 """
 Local image / attachment storage.
 
-Layout: ``assets_root/YYYY-MM-DD/<uuid>.<ext>``
+Layout (v2): ``assets_root/<id>/<uuid>.<ext>``
 Paths stored in Markdown are relative to the data root:
-``assets/YYYY-MM-DD/filename.jpg``
+``assets/<id>/filename.jpg``
 """
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ class AssetStore:
         self.data_root = data_root
         self.assets_root.mkdir(parents=True, exist_ok=True)
 
-    def save_image(self, entry_date: str, source: Path) -> str:
+    def save_image(self, entry_id: str, source: Path) -> str:
         """
         Copy image into assets folder. Returns markdown-relative path
-        from data root, e.g. ``assets/2026-07-27/abc.jpg``.
+        from data root, e.g. ``assets/<id>/abc.jpg``.
         """
         ext = source.suffix.lower()
         if ext not in ALLOWED_EXT:
@@ -36,20 +36,29 @@ class AssetStore:
         if not source.exists():
             raise FileNotFoundError(str(source))
 
-        folder = self.assets_root / asset_dir_relpath(entry_date)
+        folder = self.assets_root / asset_dir_relpath(entry_id)
         folder.mkdir(parents=True, exist_ok=True)
         name = f"{uuid.uuid4().hex[:12]}{ext}"
         dest = folder / name
         shutil.copy2(source, dest)
-        rel = f"assets/{entry_date}/{name}"
+        rel = f"assets/{entry_id}/{name}"
         logger.info("Saved asset %s", rel)
         return rel
 
     def absolute(self, rel_from_data: str) -> Path:
         return (self.data_root / rel_from_data).resolve()
 
+    def list_for_entry(self, entry_id: str) -> list[Path]:
+        folder = self.assets_root / asset_dir_relpath(entry_id)
+        if not folder.exists():
+            return []
+        return sorted(
+            p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in ALLOWED_EXT
+        )
+
     def list_for_date(self, entry_date: str) -> list[Path]:
-        folder = self.assets_root / asset_dir_relpath(entry_date)
+        """Legacy v1: assets keyed by calendar date."""
+        folder = self.assets_root / entry_date
         if not folder.exists():
             return []
         return sorted(

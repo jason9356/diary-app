@@ -1,7 +1,7 @@
 """
 Diary domain service: load / save / search / export.
 
-Keeps SQLite index and Markdown files in sync.
+Keeps SQLite index, Markdown files, and day JSON in sync.
 """
 from __future__ import annotations
 
@@ -16,15 +16,13 @@ from typing import Optional
 
 from app.config import AppConfig
 from storage.asset_store import AssetStore
-from storage.database import Database, EntryMeta, SearchHit, utc_now_iso
+from storage.database import Database, DayMeta, EntryMeta, SearchHit, utc_now_iso
+from storage.day_store import DayContext, DayStore, can_overwrite_context
 from storage.export import export_zip
 from storage.markdown_store import MarkdownStore
-from utils.paths import diary_md_relpath
+from utils.paths import diary_md_relpath_for_id
 
 logger = logging.getLogger("diary.service")
-
-# phone overrides desktop/manual when syncing later.
-CONTEXT_RANK = {"phone": 3, "desktop": 2, "manual": 1, "": 0}
 
 
 @dataclass
@@ -75,48 +73,92 @@ def first_image_relpath(body: str) -> Optional[str]:
     return m.group(1).strip() if m else None
 
 
-def can_overwrite_context(existing_source: str, new_source: str) -> bool:
-    return CONTEXT_RANK.get(new_source, 0) >= CONTEXT_RANK.get(existing_source or "", 0)
-
-
 class DiaryService:
     def __init__(self, config: AppConfig) -> None:
         self.config = config
         self.db = Database(config.db_path)
-        self.md = MarkdownStore(config.diary_root)
+        self.md = MarkdownStore(config.diary_root, config.assets_root)
+        self.days = DayStore(config.diary_root)
         self.assets = AssetStore(config.assets_root, config.data_path)
+        self._run_file_migration()
 
     def close(self) -> None:
         self.db.close()
 
+    def _run_file_migration(self) -> None:
+        """One-time v1 → v2 file layout migration + reindex."""
+        migrated = self.md.migrate_v1_layout(self.days)
+        if migrated:
+            logger.info("Migrated %d v1 markdown files to v2 layout", migrated)
+        self._reindex_from_disk()
+
+    def _reindex_from_disk(self) -> None:
+        """Ensure DB reflects all id-keyed markdown files on disk."""
+        notes: list[tuple[str, str, str, EntryMeta]] = []
+        for entry_id, entry_date in self.md.list_note_ids():
+            body = self.md.read(entry_id, entry_date)
+            fm = self.md.read_front_matter(entry_id, entry_date)
+            title = fm.title or extract_title(body, entry_date)
+            existing = self.db.get_by_id(entry_id)
+            meta = EntryMeta(
+                id=entry_id,
+                entry_date=entry_date,
+                title=title,
+                word_count=count_words(body),
+                created_at=fm.created_at or (existing.created_at if existing else utc_now_iso()),
+                updated_at=fm.updated_at or (existing.updated_at if existing else utc_now_iso()),
+                writing_duration_sec=fm.writing_duration_sec
+                or (existing.writing_duration_sec if existing else 0),
+                file_relpath=diary_md_relpath_for_id(entry_date, entry_id),
+                content_hash=content_hash(body),
+                synced_at=existing.synced_at if existing else None,
+                deleted=0,
+            )
+            notes.append((entry_id, entry_date, body, meta))
+        if notes:
+            self.db.reindex_from_files(notes)
+
+        # Sync day JSON into DB index.
+        if self.config.diary_root.exists():
+            for path in self.config.diary_root.rglob("*.day.json"):
+                entry_date = path.name.removesuffix(".day.json")
+                ctx = self.days.read(entry_date)
+                if ctx is None:
+                    continue
+                self.db.upsert_day(
+                    DayMeta(
+                        date=ctx.date,
+                        location=ctx.location,
+                        weather=ctx.weather,
+                        temp_c=ctx.temp_c,
+                        context_source=ctx.context_source,
+                        context_updated_at=ctx.context_updated_at,
+                        updated_at=ctx.updated_at,
+                    )
+                )
+
     def today(self) -> str:
         return date.today().isoformat()
 
-    def _images(self, entry_date: str) -> list[str]:
-        return [p.as_posix() for p in self.assets.list_for_date(entry_date)]
+    def _day_context(self, entry_date: str) -> DayContext:
+        ctx = self.days.read(entry_date)
+        if ctx is not None:
+            return ctx
+        db_day = self.db.get_day(entry_date)
+        if db_day is not None:
+            return DayContext(
+                date=db_day.date,
+                location=db_day.location,
+                weather=db_day.weather,
+                temp_c=db_day.temp_c,
+                context_source=db_day.context_source,
+                context_updated_at=db_day.context_updated_at,
+                updated_at=db_day.updated_at,
+            )
+        return DayContext(date=entry_date)
 
-    def _merge_context(
-        self, entry_date: str, meta: Optional[EntryMeta]
-    ) -> tuple[str, str, Optional[float], str, str]:
-        """Prefer DB, fall back to markdown front matter."""
-        fm = self.md.read_front_matter(entry_date) if self.md.exists(entry_date) else None
-        if meta and (meta.location or meta.weather or meta.temp_c is not None):
-            return (
-                meta.location,
-                meta.weather,
-                meta.temp_c,
-                meta.context_source,
-                meta.context_updated_at,
-            )
-        if fm:
-            return (
-                fm.location,
-                fm.weather,
-                fm.temp_c,
-                fm.context_source,
-                fm.context_updated_at,
-            )
-        return "", "", None, "", ""
+    def _images(self, entry_id: str) -> list[str]:
+        return [p.as_posix() for p in self.assets.list_for_entry(entry_id)]
 
     def _to_entry(
         self,
@@ -130,12 +172,9 @@ class DiaryService:
         writing_duration_sec: int,
         entry_id: str,
         file_relpath: str,
-        location: str = "",
-        weather: str = "",
-        temp_c: Optional[float] = None,
-        context_source: str = "",
-        context_updated_at: str = "",
+        day_ctx: Optional[DayContext] = None,
     ) -> DiaryEntry:
+        ctx = day_ctx or self._day_context(entry_date)
         return DiaryEntry(
             entry_date=entry_date,
             title=title,
@@ -146,155 +185,56 @@ class DiaryService:
             writing_duration_sec=writing_duration_sec,
             id=entry_id,
             file_relpath=file_relpath,
-            image_paths=self._images(entry_date),
-            location=location,
-            weather=weather,
-            temp_c=temp_c,
-            context_source=context_source,
-            context_updated_at=context_updated_at,
+            image_paths=self._images(entry_id),
+            location=ctx.location,
+            weather=ctx.weather,
+            temp_c=ctx.temp_c,
+            context_source=ctx.context_source,
+            context_updated_at=ctx.context_updated_at,
         )
 
-    def get_or_create(self, entry_date: str) -> DiaryEntry:
-        meta = self.db.get_by_date(entry_date)
-        body = self.md.read(entry_date) if self.md.exists(entry_date) else ""
-        loc, weather, temp, src, ctx_at = self._merge_context(entry_date, meta)
-        if meta is None:
-            now = utc_now_iso()
-            fm = self.md.read_front_matter(entry_date) if self.md.exists(entry_date) else None
-            return self._to_entry(
-                entry_date=entry_date,
-                title=(fm.title if fm and fm.title else entry_date),
-                body=body,
-                word_count=count_words(body),
-                created_at=(fm.created_at if fm and fm.created_at else now),
-                updated_at=(fm.updated_at if fm and fm.updated_at else now),
-                writing_duration_sec=(fm.writing_duration_sec if fm else 0),
-                entry_id=(fm.id if fm and fm.id else str(uuid.uuid4())),
-                file_relpath=diary_md_relpath(entry_date),
-                location=loc,
-                weather=weather,
-                temp_c=temp,
-                context_source=src,
-                context_updated_at=ctx_at,
-            )
-        return self._to_entry(
-            entry_date=meta.entry_date,
-            title=meta.title,
-            body=body,
-            word_count=meta.word_count,
-            created_at=meta.created_at,
-            updated_at=meta.updated_at,
-            writing_duration_sec=meta.writing_duration_sec,
-            entry_id=meta.id,
-            file_relpath=meta.file_relpath,
-            location=loc,
-            weather=weather,
-            temp_c=temp,
-            context_source=src,
-            context_updated_at=ctx_at,
-        )
-
-    def save(
-        self,
-        entry_date: str,
-        body: str,
-        writing_duration_sec: int,
-        entry_id: Optional[str] = None,
-        created_at: Optional[str] = None,
-        *,
-        location: Optional[str] = None,
-        weather: Optional[str] = None,
-        temp_c: Optional[float] = None,
-        context_source: Optional[str] = None,
-        context_updated_at: Optional[str] = None,
-        preserve_context: bool = True,
-    ) -> DiaryEntry:
-        existing = self.db.get_by_date(entry_date)
+    def create_entry(self, entry_date: str) -> DiaryEntry:
+        """Create a new empty note for the given calendar day."""
         now = utc_now_iso()
-        title = extract_title(body, entry_date)
-        words = count_words(body)
-
-        if preserve_context and existing:
-            loc = existing.location if location is None else location
-            wx = existing.weather if weather is None else weather
-            tmp = existing.temp_c if temp_c is None else temp_c
-            src = existing.context_source if context_source is None else context_source
-            ctx_at = (
-                existing.context_updated_at
-                if context_updated_at is None
-                else context_updated_at
-            )
-        else:
-            fm = self.md.read_front_matter(entry_date) if self.md.exists(entry_date) else None
-            loc = location if location is not None else (fm.location if fm else "")
-            wx = weather if weather is not None else (fm.weather if fm else "")
-            tmp = temp_c if temp_c is not None else (fm.temp_c if fm else None)
-            src = (
-                context_source
-                if context_source is not None
-                else (fm.context_source if fm else "")
-            )
-            ctx_at = (
-                context_updated_at
-                if context_updated_at is not None
-                else (fm.context_updated_at if fm else "")
-            )
-
-        eid = entry_id or (existing.id if existing else str(uuid.uuid4()))
-        created = created_at or (existing.created_at if existing else now)
-        duration = max(
-            writing_duration_sec,
-            existing.writing_duration_sec if existing else 0,
-        )
-        new_hash = content_hash(body)
-        context_changed = False
-        if existing:
-            context_changed = (
-                (loc or "") != (existing.location or "")
-                or (wx or "") != (existing.weather or "")
-                or tmp != existing.temp_c
-                or (src or "") != (existing.context_source or "")
-            )
-        # Only bump updated_at when body/context actually change.
-        # Duration-only / no-op saves must not win LWW over the other device.
-        if existing and new_hash == existing.content_hash and not context_changed:
-            updated = existing.updated_at or now
-        else:
-            updated = now
+        entry_id = str(uuid.uuid4())
         rel = self.md.write(
+            entry_id,
             entry_date,
-            body,
-            title=title,
-            entry_id=eid,
-            created_at=created,
-            updated_at=updated,
-            location=loc or "",
-            weather=wx or "",
-            temp_c=tmp,
-            context_source=src or "",
-            context_updated_at=ctx_at or "",
-            writing_duration_sec=duration,
+            "",
+            title=entry_date,
+            created_at=now,
+            updated_at=now,
         )
         meta = EntryMeta(
-            id=eid,
+            id=entry_id,
             entry_date=entry_date,
-            title=title,
-            word_count=words,
-            created_at=created,
-            updated_at=updated,
-            writing_duration_sec=duration,
+            title=entry_date,
+            word_count=0,
+            created_at=now,
+            updated_at=now,
+            writing_duration_sec=0,
             file_relpath=rel,
-            content_hash=content_hash(body),
-            synced_at=existing.synced_at if existing else None,
+            content_hash=content_hash(""),
             deleted=0,
-            location=loc or "",
-            weather=wx or "",
-            temp_c=tmp,
-            context_source=src or "",
-            context_updated_at=ctx_at or "",
         )
-        self.db.upsert_entry(meta, body=body)
-        logger.debug("Saved %s (%d words)", entry_date, words)
+        self.db.upsert_entry(meta, body="")
+        return self._to_entry(
+            entry_date=entry_date,
+            title=entry_date,
+            body="",
+            word_count=0,
+            created_at=now,
+            updated_at=now,
+            writing_duration_sec=0,
+            entry_id=entry_id,
+            file_relpath=rel,
+        )
+
+    def get_by_id(self, entry_id: str) -> Optional[DiaryEntry]:
+        meta = self.db.get_by_id(entry_id)
+        if meta is None:
+            return None
+        body = self.md.read(entry_id, meta.entry_date)
         return self._to_entry(
             entry_date=meta.entry_date,
             title=meta.title,
@@ -305,73 +245,13 @@ class DiaryService:
             writing_duration_sec=meta.writing_duration_sec,
             entry_id=meta.id,
             file_relpath=meta.file_relpath,
-            location=meta.location,
-            weather=meta.weather,
-            temp_c=meta.temp_c,
-            context_source=meta.context_source,
-            context_updated_at=meta.context_updated_at,
         )
 
-    def save_context(
-        self,
-        entry_date: str,
-        *,
-        location: str,
-        weather: str,
-        temp_c: Optional[float],
-        context_source: str,
-        body: Optional[str] = None,
-        writing_duration_sec: int = 0,
-        entry_id: Optional[str] = None,
-        created_at: Optional[str] = None,
-        force: bool = False,
-    ) -> Optional[DiaryEntry]:
-        """Update place/weather. Respects phone > desktop > manual unless force."""
-        existing = self.db.get_by_date(entry_date)
-        old_src = ""
-        if existing:
-            old_src = existing.context_source
-        else:
-            fm = self.md.read_front_matter(entry_date)
-            old_src = fm.context_source
-        if not force and not can_overwrite_context(old_src, context_source):
-            logger.info(
-                "Skip context write for %s (have %s, got %s)",
-                entry_date,
-                old_src,
-                context_source,
-            )
-            return None
-        text = body if body is not None else (
-            self.md.read(entry_date) if self.md.exists(entry_date) else ""
-        )
-        return self.save(
-            entry_date=entry_date,
-            body=text,
-            writing_duration_sec=writing_duration_sec
-            or (existing.writing_duration_sec if existing else 0),
-            entry_id=entry_id or (existing.id if existing else None),
-            created_at=created_at or (existing.created_at if existing else None),
-            location=location,
-            weather=weather,
-            temp_c=temp_c,
-            context_source=context_source,
-            context_updated_at=utc_now_iso(),
-            preserve_context=False,
-        )
-
-    def dates_with_content(
-        self, year: Optional[int] = None, month: Optional[int] = None
-    ) -> set[str]:
-        return set(self.db.list_dates_with_entries(year=year, month=month))
-
-    def timeline(
-        self, year: Optional[int] = None, month: Optional[int] = None
-    ) -> list[DiaryEntry]:
+    def list_for_date(self, entry_date: str) -> list[DiaryEntry]:
         result: list[DiaryEntry] = []
-        for meta in self.db.list_entries(year=year, month=month):
-            body = self.md.read(meta.entry_date)
-            loc, weather, temp, src, ctx_at = self._merge_context(meta.entry_date, meta)
+        day_ctx = self._day_context(entry_date)
+        for meta in self.db.list_by_date(entry_date):
+            body = self.md.read(meta.id, meta.entry_date)
             result.append(
                 self._to_entry(
                     entry_date=meta.entry_date,
@@ -383,11 +263,183 @@ class DiaryService:
                     writing_duration_sec=meta.writing_duration_sec,
                     entry_id=meta.id,
                     file_relpath=meta.file_relpath,
-                    location=loc,
-                    weather=weather,
-                    temp_c=temp,
-                    context_source=src,
-                    context_updated_at=ctx_at,
+                    day_ctx=day_ctx,
+                )
+            )
+        return result
+
+    def get_or_create(self, entry_date: str) -> DiaryEntry:
+        """Open the first note of the day, or return an unsaved stub if none exist."""
+        notes = self.list_for_date(entry_date)
+        if notes:
+            return notes[0]
+        now = utc_now_iso()
+        entry_id = str(uuid.uuid4())
+        return self._to_entry(
+            entry_date=entry_date,
+            title=entry_date,
+            body="",
+            word_count=0,
+            created_at=now,
+            updated_at=now,
+            writing_duration_sec=0,
+            entry_id=entry_id,
+            file_relpath=diary_md_relpath_for_id(entry_date, entry_id),
+        )
+
+    def save(
+        self,
+        entry_date: str,
+        body: str,
+        writing_duration_sec: int,
+        entry_id: Optional[str] = None,
+        created_at: Optional[str] = None,
+    ) -> DiaryEntry:
+        existing = self.db.get_by_id(entry_id) if entry_id else None
+        now = utc_now_iso()
+        title = extract_title(body, entry_date)
+        words = count_words(body)
+
+        eid = entry_id or (existing.id if existing else str(uuid.uuid4()))
+        created = created_at or (existing.created_at if existing else now)
+        duration = max(
+            writing_duration_sec,
+            existing.writing_duration_sec if existing else 0,
+        )
+        new_hash = content_hash(body)
+        if existing and new_hash == existing.content_hash:
+            updated = existing.updated_at or now
+        else:
+            updated = now
+        rel = self.md.write(
+            eid,
+            entry_date,
+            body,
+            title=title,
+            created_at=created,
+            updated_at=updated,
+            writing_duration_sec=duration,
+        )
+        meta = EntryMeta(
+            id=eid,
+            entry_date=entry_date,
+            title=title,
+            word_count=words,
+            created_at=created,
+            updated_at=updated,
+            writing_duration_sec=duration,
+            file_relpath=rel,
+            content_hash=new_hash,
+            synced_at=existing.synced_at if existing else None,
+            deleted=0,
+        )
+        self.db.upsert_entry(meta, body=body)
+        logger.debug("Saved note %s on %s (%d words)", eid, entry_date, words)
+        return self._to_entry(
+            entry_date=meta.entry_date,
+            title=meta.title,
+            body=body,
+            word_count=meta.word_count,
+            created_at=meta.created_at,
+            updated_at=meta.updated_at,
+            writing_duration_sec=meta.writing_duration_sec,
+            entry_id=meta.id,
+            file_relpath=meta.file_relpath,
+        )
+
+    def get_day_context(self, entry_date: str) -> DayContext:
+        return self._day_context(entry_date)
+
+    def set_day_context(
+        self,
+        entry_date: str,
+        *,
+        location: str,
+        weather: str,
+        temp_c: Optional[float],
+        context_source: str,
+        force: bool = False,
+    ) -> Optional[DayContext]:
+        """Update day-level place/weather. Respects phone > desktop > manual unless force."""
+        existing = self._day_context(entry_date)
+        if not force and not can_overwrite_context(existing.context_source, context_source):
+            logger.info(
+                "Skip context write for %s (have %s, got %s)",
+                entry_date,
+                existing.context_source,
+                context_source,
+            )
+            return None
+        now = utc_now_iso()
+        incoming = DayContext(
+            date=entry_date,
+            location=location,
+            weather=weather,
+            temp_c=temp_c,
+            context_source=context_source,
+            context_updated_at=now,
+            updated_at=now,
+        )
+        merged = self.days.merge_write(incoming)
+        self.db.upsert_day(
+            DayMeta(
+                date=merged.date,
+                location=merged.location,
+                weather=merged.weather,
+                temp_c=merged.temp_c,
+                context_source=merged.context_source,
+                context_updated_at=merged.context_updated_at,
+                updated_at=merged.updated_at,
+            )
+        )
+        return merged
+
+    def save_context(
+        self,
+        entry_date: str,
+        *,
+        location: str,
+        weather: str,
+        temp_c: Optional[float],
+        context_source: str,
+        force: bool = False,
+    ) -> Optional[DayContext]:
+        return self.set_day_context(
+            entry_date,
+            location=location,
+            weather=weather,
+            temp_c=temp_c,
+            context_source=context_source,
+            force=force,
+        )
+
+    def dates_with_content(
+        self, year: Optional[int] = None, month: Optional[int] = None
+    ) -> set[str]:
+        return set(self.db.list_dates_with_entries(year=year, month=month))
+
+    def timeline(
+        self, year: Optional[int] = None, month: Optional[int] = None
+    ) -> list[DiaryEntry]:
+        result: list[DiaryEntry] = []
+        day_cache: dict[str, DayContext] = {}
+        for meta in self.db.list_entries(year=year, month=month):
+            if meta.entry_date not in day_cache:
+                day_cache[meta.entry_date] = self._day_context(meta.entry_date)
+            body = self.md.read(meta.id, meta.entry_date)
+            ctx = day_cache[meta.entry_date]
+            result.append(
+                self._to_entry(
+                    entry_date=meta.entry_date,
+                    title=meta.title,
+                    body=body,
+                    word_count=meta.word_count,
+                    created_at=meta.created_at,
+                    updated_at=meta.updated_at,
+                    writing_duration_sec=meta.writing_duration_sec,
+                    entry_id=meta.id,
+                    file_relpath=meta.file_relpath,
+                    day_ctx=ctx,
                 )
             )
         return result
@@ -395,17 +447,17 @@ class DiaryService:
     def search(self, query: str) -> list[SearchHit]:
         return self.db.search(query)
 
-    def save_dropped_image(self, entry_date: str, source: Path) -> str:
-        return self.assets.save_image(entry_date, source)
+    def save_dropped_image(self, entry_id: str, source: Path) -> str:
+        return self.assets.save_image(entry_id, source)
 
     def resolve_asset(self, rel: str) -> Path:
         return self.assets.absolute(rel)
 
-    def list_image_rels(self, entry_date: str) -> list[str]:
-        """Relative paths from data root for the day's assets."""
+    def list_image_rels(self, entry_id: str) -> list[str]:
+        """Relative paths from data root for the note's assets."""
         return [
-            f"assets/{entry_date}/{p.name}"
-            for p in self.assets.list_for_date(entry_date)
+            f"assets/{entry_id}/{p.name}"
+            for p in self.assets.list_for_entry(entry_id)
         ]
 
     def export(self, dest: Optional[Path] = None) -> Path:

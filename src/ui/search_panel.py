@@ -19,7 +19,7 @@ from storage.database import SearchHit
 
 class SearchPanel(QWidget):
     query_changed = Signal(str)
-    result_activated = Signal(str)
+    result_activated = Signal(str)  # entry id
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -59,14 +59,14 @@ class SearchPanel(QWidget):
             if snippet:
                 display += f"\n{snippet}"
             item = QListWidgetItem(display)
-            item.setData(Qt.ItemDataRole.UserRole, hit.entry_date)
+            item.setData(Qt.ItemDataRole.UserRole, hit.entry_id)
             item.setData(Qt.ItemDataRole.UserRole + 1, keyword)
             self.results.addItem(item)
 
     def _on_click(self, item: QListWidgetItem) -> None:
-        date_key = item.data(Qt.ItemDataRole.UserRole)
-        if date_key:
-            self.result_activated.emit(date_key)
+        entry_id = item.data(Qt.ItemDataRole.UserRole)
+        if entry_id:
+            self.result_activated.emit(entry_id)
 
 
 def highlight_in_editor(editor_widget, keyword: str) -> None:

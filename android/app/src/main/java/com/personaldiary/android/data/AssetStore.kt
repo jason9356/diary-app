@@ -12,29 +12,37 @@ class AssetStore(private val assetsRoot: File) {
         assetsRoot.mkdirs()
     }
 
-    fun dirFor(entryDate: String): File = File(assetsRoot, entryDate).also { it.mkdirs() }
+    fun dirFor(entryId: String): File = File(assetsRoot, entryId).also { it.mkdirs() }
 
-    fun listRels(entryDate: String): List<String> {
-        val dir = File(assetsRoot, entryDate)
+    fun listRels(entryId: String): List<String> {
+        val dir = File(assetsRoot, entryId)
         if (!dir.isDirectory) return emptyList()
         return dir.listFiles()
             ?.filter { it.isFile && it.extension.lowercase() in allowed }
             ?.sortedBy { it.name }
-            ?.map { "assets/$entryDate/${it.name}" }
+            ?.map { "assets/$entryId/${it.name}" }
             .orEmpty()
     }
 
     fun absolute(rel: String): File = File(assetsRoot.parentFile, rel)
 
-    fun saveFromUri(context: Context, entryDate: String, uri: Uri): String {
+    fun saveFromUri(context: Context, entryId: String, uri: Uri): String {
         val nameGuess = uri.lastPathSegment?.substringAfterLast('/') ?: "image.jpg"
         val ext = nameGuess.substringAfterLast('.', "jpg").lowercase().let {
             if (it in allowed) it else "jpg"
         }
-        val dest = File(dirFor(entryDate), "${UUID.randomUUID().toString().take(12)}.$ext")
+        val dest = File(dirFor(entryId), "${UUID.randomUUID().toString().take(12)}.$ext")
         context.contentResolver.openInputStream(uri)?.use { input ->
             dest.outputStream().use { output -> input.copyTo(output) }
         } ?: error("无法读取图片")
-        return "assets/$entryDate/${dest.name}"
+        return "assets/$entryId/${dest.name}"
     }
+
+    fun listFiles(entryId: String): List<File> {
+        val dir = File(assetsRoot, entryId)
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name }.orEmpty()
+    }
+
+    fun assetFile(entryId: String, name: String): File = File(dirFor(entryId), name)
 }

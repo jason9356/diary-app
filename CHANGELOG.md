@@ -6,17 +6,19 @@
 
 ### Added
 
-- **同步服务端**（`server/` FastAPI）：Bearer 鉴权、单日上下传、assets、增量 `changes`、Docker Compose
-- **同步协议** [docs/sync-protocol.md](./docs/sync-protocol.md)
-- 桌面 / Android：Markdown front matter 写入 `id` / `created_at` / `updated_at`；最小同步客户端
+- **同步协议 v2**：一天多条笔记，以 UUID `id` 为主键；日天气独立为 `.day.json`；API `/entries/{id}`、`/days/{date}`
+- **同步服务端**（`server/` FastAPI）：Bearer 鉴权、笔记/日上下文/assets、增量 `changes`、Docker Compose；已支持 v1→v2 迁移
+- 桌面：当日多笔记下拉 +「新建笔记」；按 id 同步
+- Android：时间线 → 日列表 → 所见即所得编辑（richeditor）；内联插图与键盘跟滚
 - 工具栏「图片」按钮（`Ctrl+Shift+I`）与当日图条缩略图
 - 预览图片版式：单图通栏、连续多图双列
 - 日记地点 / 天气 / 温度（标题下展示；YAML + SQLite；手机来源优先生效）
 - 电脑端 Open-Meteo 自动取天气（可配置 `weather_city`，可选手填）
-- **Android 客户端骨架**（`android/`）：同设计语言、本地 Markdown 协议、自动定位天气、插图；与桌面代码隔离
+- **Android 客户端**（`android/`）：同设计语言、本地 Markdown 协议、自动定位天气、插图；与桌面代码隔离
 
 ### Changed
 
+- 同步从「一天一篇 / 按日期路由」升级为「一天多条 / 按 id 路由」（protocol 2）
 - 视觉重设：冷静纸色 + 苔绿点缀（取代奶油底/电蓝）
 - 侧栏收窄（约 256px），顶部品牌字与下划线导航
 - 日历改为自绘日期格（柔选中、今日描边、小圆点），固定高度避免撑满
