@@ -12,11 +12,15 @@ class MarkdownStore(private val diaryRoot: File) {
     data class FrontMatter(
         val date: String = "",
         val title: String = "",
+        val id: String = "",
+        val createdAt: String = "",
+        val updatedAt: String = "",
         val location: String = "",
         val weather: String = "",
         val tempC: Double? = null,
         val contextSource: String = "",
         val contextUpdatedAt: String = "",
+        val writingDurationSec: Int = 0,
     )
 
     init {
@@ -39,6 +43,17 @@ class MarkdownStore(private val diaryRoot: File) {
         return body
     }
 
+    fun readRaw(entryDate: String): String {
+        val f = pathFor(entryDate)
+        return if (f.isFile) f.readText(Charsets.UTF_8) else ""
+    }
+
+    fun writeRaw(entryDate: String, markdown: String) {
+        val file = pathFor(entryDate)
+        file.parentFile?.mkdirs()
+        file.writeText(markdown, Charsets.UTF_8)
+    }
+
     fun readFrontMatter(entryDate: String): FrontMatter {
         val f = pathFor(entryDate)
         if (!f.isFile) return FrontMatter(date = entryDate)
@@ -50,11 +65,15 @@ class MarkdownStore(private val diaryRoot: File) {
         entryDate: String,
         body: String,
         title: String = entryDate,
+        id: String = "",
+        createdAt: String = "",
+        updatedAt: String = "",
         location: String = "",
         weather: String = "",
         tempC: Double? = null,
         contextSource: String = "",
         contextUpdatedAt: String = "",
+        writingDurationSec: Int = 0,
     ) {
         val file = pathFor(entryDate)
         file.parentFile?.mkdirs()
@@ -63,11 +82,15 @@ class MarkdownStore(private val diaryRoot: File) {
             "date: $entryDate",
             "title: ${yamlEscape(title.ifBlank { entryDate })}",
         )
+        if (id.isNotBlank()) lines += "id: $id"
+        if (createdAt.isNotBlank()) lines += "created_at: $createdAt"
+        if (updatedAt.isNotBlank()) lines += "updated_at: $updatedAt"
         if (location.isNotBlank()) lines += "location: ${yamlEscape(location)}"
         if (weather.isNotBlank()) lines += "weather: ${yamlEscape(weather)}"
         if (tempC != null) lines += "temp_c: ${trimNum(tempC)}"
         if (contextSource.isNotBlank()) lines += "context_source: $contextSource"
         if (contextUpdatedAt.isNotBlank()) lines += "context_updated_at: $contextUpdatedAt"
+        if (writingDurationSec > 0) lines += "writing_duration_sec: $writingDurationSec"
         lines += "---"
         val content = lines.joinToString("\n") + "\n\n" + body.trimEnd() + "\n"
         file.writeText(content, Charsets.UTF_8)
@@ -83,7 +106,7 @@ class MarkdownStore(private val diaryRoot: File) {
             .toList()
     }
 
-    private fun parse(text: String): Pair<String, FrontMatter> {
+    fun parse(text: String): Pair<String, FrontMatter> {
         if (!text.startsWith("---")) return text to FrontMatter()
         val end = text.indexOf("\n---", 3)
         if (end < 0) return text to FrontMatter()
@@ -97,14 +120,19 @@ class MarkdownStore(private val diaryRoot: File) {
             }
         }
         val temp = map["temp_c"]?.toDoubleOrNull()
+        val duration = map["writing_duration_sec"]?.toDoubleOrNull()?.toInt() ?: 0
         return body to FrontMatter(
             date = map["date"].orEmpty(),
             title = map["title"].orEmpty(),
+            id = map["id"].orEmpty(),
+            createdAt = map["created_at"].orEmpty(),
+            updatedAt = map["updated_at"].orEmpty(),
             location = map["location"].orEmpty(),
             weather = map["weather"].orEmpty(),
             tempC = temp,
             contextSource = map["context_source"].orEmpty(),
             contextUpdatedAt = map["context_updated_at"].orEmpty(),
+            writingDurationSec = duration,
         )
     }
 

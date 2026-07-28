@@ -3,6 +3,7 @@ package com.personaldiary.android.data
 import android.content.Context
 import android.net.Uri
 import java.io.File
+import java.util.UUID
 
 class DiaryRepository(dataRoot: File) {
     private val md = MarkdownStore(File(dataRoot, "diary"))
@@ -19,10 +20,15 @@ class DiaryRepository(dataRoot: File) {
                 ?.take(80)
                 ?: entryDate
         }
+        val now = DiaryEntry.nowIso()
         return DiaryEntry(
+            id = fm.id.ifBlank { UUID.randomUUID().toString() },
             entryDate = entryDate,
             title = title,
             body = body,
+            createdAt = fm.createdAt.ifBlank { now },
+            updatedAt = fm.updatedAt.ifBlank { now },
+            writingDurationSec = fm.writingDurationSec,
             location = fm.location,
             weather = fm.weather,
             tempC = fm.tempC,
@@ -34,18 +40,51 @@ class DiaryRepository(dataRoot: File) {
 
     fun save(entry: DiaryEntry): DiaryEntry {
         val title = extractTitle(entry.body, entry.entryDate)
+        val now = DiaryEntry.nowIso()
+        val id = entry.id.ifBlank { UUID.randomUUID().toString() }
+        val created = entry.createdAt.ifBlank { now }
+        val previous = getOrCreate(entry.entryDate)
+        val contextChanged =
+            entry.location != previous.location ||
+                entry.weather != previous.weather ||
+                entry.tempC != previous.tempC ||
+                entry.contextSource != previous.contextSource
+        // Only bump updatedAt when body/context change — avoids sync always winning LWW.
+        val updated =
+            if (previous.body == entry.body && !contextChanged && previous.updatedAt.isNotBlank()) {
+                previous.updatedAt
+            } else {
+                now
+            }
         md.write(
             entryDate = entry.entryDate,
             body = entry.body,
             title = title,
+            id = id,
+            createdAt = created,
+            updatedAt = updated,
             location = entry.location,
             weather = entry.weather,
             tempC = entry.tempC,
             contextSource = entry.contextSource,
             contextUpdatedAt = entry.contextUpdatedAt,
+            writingDurationSec = entry.writingDurationSec,
         )
-        return entry.copy(title = title, imageRels = assets.listRels(entry.entryDate))
+        return entry.copy(
+            id = id,
+            title = title,
+            createdAt = created,
+            updatedAt = updated,
+            imageRels = assets.listRels(entry.entryDate),
+        )
     }
+
+    fun applyRemoteMarkdown(entryDate: String, markdown: String): DiaryEntry {
+        md.writeRaw(entryDate, markdown)
+        return getOrCreate(entryDate)
+    }
+
+    fun readRaw(entryDate: String): String = md.readRaw(entryDate)
 
     fun saveContext(entryDate: String, snap: WeatherSnapshot, force: Boolean = false): DiaryEntry {
         val current = getOrCreate(entryDate)
@@ -79,6 +118,14 @@ class DiaryRepository(dataRoot: File) {
     }
 
     fun absoluteAsset(rel: String): File = assets.absolute(rel)
+
+    fun assetFile(entryDate: String, name: String): File = File(File(dataRoot, "assets"), "$entryDate/$name")
+
+    fun listAssetFiles(entryDate: String): List<File> {
+        val dir = File(File(dataRoot, "assets"), entryDate)
+        if (!dir.isDirectory) return emptyList()
+        return dir.listFiles()?.filter { it.isFile }?.sortedBy { it.name }.orEmpty()
+    }
 
     private fun extractTitle(body: String, fallback: String): String {
         for (line in body.lineSequence()) {

@@ -160,15 +160,16 @@ class DiaryService:
         loc, weather, temp, src, ctx_at = self._merge_context(entry_date, meta)
         if meta is None:
             now = utc_now_iso()
+            fm = self.md.read_front_matter(entry_date) if self.md.exists(entry_date) else None
             return self._to_entry(
                 entry_date=entry_date,
-                title=entry_date,
+                title=(fm.title if fm and fm.title else entry_date),
                 body=body,
                 word_count=count_words(body),
-                created_at=now,
-                updated_at=now,
-                writing_duration_sec=0,
-                entry_id=str(uuid.uuid4()),
+                created_at=(fm.created_at if fm and fm.created_at else now),
+                updated_at=(fm.updated_at if fm and fm.updated_at else now),
+                writing_duration_sec=(fm.writing_duration_sec if fm else 0),
+                entry_id=(fm.id if fm and fm.id else str(uuid.uuid4())),
                 file_relpath=diary_md_relpath(entry_date),
                 location=loc,
                 weather=weather,
@@ -239,27 +240,49 @@ class DiaryService:
                 else (fm.context_updated_at if fm else "")
             )
 
+        eid = entry_id or (existing.id if existing else str(uuid.uuid4()))
+        created = created_at or (existing.created_at if existing else now)
+        duration = max(
+            writing_duration_sec,
+            existing.writing_duration_sec if existing else 0,
+        )
+        new_hash = content_hash(body)
+        context_changed = False
+        if existing:
+            context_changed = (
+                (loc or "") != (existing.location or "")
+                or (wx or "") != (existing.weather or "")
+                or tmp != existing.temp_c
+                or (src or "") != (existing.context_source or "")
+            )
+        # Only bump updated_at when body/context actually change.
+        # Duration-only / no-op saves must not win LWW over the other device.
+        if existing and new_hash == existing.content_hash and not context_changed:
+            updated = existing.updated_at or now
+        else:
+            updated = now
         rel = self.md.write(
             entry_date,
             body,
             title=title,
+            entry_id=eid,
+            created_at=created,
+            updated_at=updated,
             location=loc or "",
             weather=wx or "",
             temp_c=tmp,
             context_source=src or "",
             context_updated_at=ctx_at or "",
+            writing_duration_sec=duration,
         )
         meta = EntryMeta(
-            id=entry_id or (existing.id if existing else str(uuid.uuid4())),
+            id=eid,
             entry_date=entry_date,
             title=title,
             word_count=words,
-            created_at=created_at or (existing.created_at if existing else now),
-            updated_at=now,
-            writing_duration_sec=max(
-                writing_duration_sec,
-                existing.writing_duration_sec if existing else 0,
-            ),
+            created_at=created,
+            updated_at=updated,
+            writing_duration_sec=duration,
             file_relpath=rel,
             content_hash=content_hash(body),
             synced_at=existing.synced_at if existing else None,

@@ -1,10 +1,16 @@
-# Reserved for a future sync server. Local diary does not need Docker.
+# Prefer running from server/:
+#   cd server && docker compose up -d --build
 #
-# To avoid accidental startup, the placeholder service uses profile "future".
-#   docker compose --profile future up
+# Or from repo root:
 
 services:
-  sync-api-placeholder:
-    profiles: ["future"]
-    image: busybox:latest
-    command: ["echo", "Sync API not implemented in v1"]
+  sync-api:
+    build: ./server
+    ports:
+      - "8000:8000"
+    environment:
+      DIARY_SYNC_TOKEN: ${DIARY_SYNC_TOKEN:?set DIARY_SYNC_TOKEN}
+      DIARY_SYNC_DATA: /data
+    volumes:
+      - ./server/data:/data
+    restart: unless-stopped

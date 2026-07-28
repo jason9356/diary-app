@@ -6,6 +6,9 @@
 
 ### Added
 
+- **同步服务端**（`server/` FastAPI）：Bearer 鉴权、单日上下传、assets、增量 `changes`、Docker Compose
+- **同步协议** [docs/sync-protocol.md](./docs/sync-protocol.md)
+- 桌面 / Android：Markdown front matter 写入 `id` / `created_at` / `updated_at`；最小同步客户端
 - 工具栏「图片」按钮（`Ctrl+Shift+I`）与当日图条缩略图
 - 预览图片版式：单图通栏、连续多图双列
 - 日记地点 / 天气 / 温度（标题下展示；YAML + SQLite；手机来源优先生效）
@@ -23,7 +26,7 @@
 
 ### Planned
 
-- 可选：标签、统计、加密、同步接口落地
+- 可选：标签、统计、加密；同步 E2E 加密与自动后台推送
 
 ## [0.2.0] - 2026-07-27
 

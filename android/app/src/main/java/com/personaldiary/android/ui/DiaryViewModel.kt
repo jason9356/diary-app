@@ -7,9 +7,12 @@ import androidx.lifecycle.viewModelScope
 import com.personaldiary.android.DiaryApplication
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.DiaryRepository
+import com.personaldiary.android.sync.SyncClient
+import com.personaldiary.android.sync.SyncPrefs
 import com.personaldiary.android.weather.LocationHelper
 import com.personaldiary.android.weather.PlaceResolver
 import com.personaldiary.android.weather.WeatherService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,14 +20,18 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class DiaryUiState(
     val entry: DiaryEntry = DiaryEntry(entryDate = DiaryEntry.today()),
     val timeline: List<DiaryEntry> = emptyList(),
     val saving: Boolean = false,
     val weatherLoading: Boolean = false,
+    val syncing: Boolean = false,
     val status: String = "",
     val needLocationPermission: Boolean = false,
+    val syncEndpoint: String = "",
+    val syncToken: String = "",
 )
 
 class DiaryViewModel(app: Application) : AndroidViewModel(app) {
@@ -32,8 +39,15 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private val locationHelper = LocationHelper(app)
     private val placeResolver = PlaceResolver(app)
     private val weatherService = WeatherService()
+    private val syncPrefs = SyncPrefs(app)
+    private val syncClient = SyncClient(repo, syncPrefs)
 
-    private val _state = MutableStateFlow(DiaryUiState())
+    private val _state = MutableStateFlow(
+        DiaryUiState(
+            syncEndpoint = syncPrefs.endpoint,
+            syncToken = syncPrefs.token,
+        )
+    )
     val state: StateFlow<DiaryUiState> = _state.asStateFlow()
 
     private var autosaveJob: Job? = null
@@ -54,7 +68,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 needLocationPermission = false,
             )
         }
-        // Location/weather: only once when today's diary has no context yet.
         if (isNewToday) {
             captureContextOnce()
         }
@@ -86,11 +99,39 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(timeline = repo.listEntries()) }
     }
 
+    fun saveSyncSettings(endpoint: String, token: String) {
+        syncPrefs.endpoint = endpoint
+        syncPrefs.token = token
+        _state.update {
+            it.copy(
+                syncEndpoint = syncPrefs.endpoint,
+                syncToken = syncPrefs.token,
+                status = "同步设置已保存",
+            )
+        }
+    }
+
+    fun syncNow() {
+        viewModelScope.launch {
+            saveNow()
+            _state.update { it.copy(syncing = true, status = "正在同步…") }
+            val date = _state.value.entry.entryDate
+            val result = withContext(Dispatchers.IO) { syncClient.sync(date) }
+            openDate(date)
+            _state.update {
+                it.copy(
+                    syncing = false,
+                    status = result.message,
+                    timeline = repo.listEntries(),
+                )
+            }
+        }
+    }
+
     fun addImage(uri: Uri) {
         viewModelScope.launch {
             try {
                 val date = _state.value.entry.entryDate
-                // Persist current text first.
                 repo.save(_state.value.entry)
                 val (saved, _) = repo.saveImage(getApplication(), date, uri)
                 _state.update {
@@ -106,7 +147,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** One-shot capture at diary creation; never overwrites existing context. */
     private fun captureContextOnce() {
         viewModelScope.launch {
             if (_state.value.entry.hasContext) return@launch
@@ -122,7 +162,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 return@launch
             }
-            // Re-check: user may have switched days while locating.
             val date = _state.value.entry.entryDate
             if (date != DiaryEntry.today() || _state.value.entry.hasContext) {
                 _state.update { it.copy(weatherLoading = false) }
@@ -154,7 +193,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun onPermissionResult(granted: Boolean) {
         if (granted) {
-            // Only fill if today's diary still has no context (first create).
             if (_state.value.entry.entryDate == DiaryEntry.today() &&
                 !_state.value.entry.hasContext
             ) {

@@ -27,11 +27,15 @@ FRONT_MATTER_RE = re.compile(
 class EntryFrontMatter:
     date: str = ""
     title: str = ""
+    id: str = ""
+    created_at: str = ""
+    updated_at: str = ""
     location: str = ""
     weather: str = ""
     temp_c: Optional[float] = None
     context_source: str = ""  # phone | desktop | manual
     context_updated_at: str = ""
+    writing_duration_sec: int = 0
 
 
 class MarkdownStore:
@@ -50,6 +54,12 @@ class MarkdownStore:
         body, _ = self._parse(text)
         return body
 
+    def read_raw(self, entry_date: str) -> str:
+        path = self.path_for(entry_date)
+        if not path.exists():
+            return ""
+        return path.read_text(encoding="utf-8")
+
     def read_front_matter(self, entry_date: str) -> EntryFrontMatter:
         path = self.path_for(entry_date)
         if not path.exists():
@@ -66,11 +76,15 @@ class MarkdownStore:
         body: str,
         title: str = "",
         *,
+        entry_id: str = "",
+        created_at: str = "",
+        updated_at: str = "",
         location: str = "",
         weather: str = "",
         temp_c: Optional[float] = None,
         context_source: str = "",
         context_updated_at: str = "",
+        writing_duration_sec: int = 0,
     ) -> str:
         """Write markdown file. Returns relative path from diary_root."""
         rel = diary_md_relpath(entry_date)
@@ -82,6 +96,12 @@ class MarkdownStore:
             f"date: {entry_date}",
             f"title: {self._yaml_escape(title)}",
         ]
+        if entry_id:
+            lines.append(f"id: {entry_id}")
+        if created_at:
+            lines.append(f"created_at: {created_at}")
+        if updated_at:
+            lines.append(f"updated_at: {updated_at}")
         if location:
             lines.append(f"location: {self._yaml_escape(location)}")
         if weather:
@@ -92,10 +112,19 @@ class MarkdownStore:
             lines.append(f"context_source: {context_source}")
         if context_updated_at:
             lines.append(f"context_updated_at: {context_updated_at}")
+        if writing_duration_sec:
+            lines.append(f"writing_duration_sec: {writing_duration_sec}")
         lines.append("---")
         content = "\n".join(lines) + "\n\n" + body.rstrip() + "\n"
         path.write_text(content, encoding="utf-8")
         logger.debug("Wrote markdown %s", path)
+        return rel
+
+    def write_raw(self, entry_date: str, markdown: str) -> str:
+        rel = diary_md_relpath(entry_date)
+        path = self.diary_root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(markdown, encoding="utf-8")
         return rel
 
     def exists(self, entry_date: str) -> bool:
@@ -118,14 +147,24 @@ class MarkdownStore:
                 temp = float(data["temp_c"])
             except ValueError:
                 temp = None
+        duration = 0
+        if data.get("writing_duration_sec"):
+            try:
+                duration = int(float(data["writing_duration_sec"]))
+            except ValueError:
+                duration = 0
         fm = EntryFrontMatter(
             date=data.get("date", ""),
             title=data.get("title", ""),
+            id=data.get("id", ""),
+            created_at=data.get("created_at", ""),
+            updated_at=data.get("updated_at", ""),
             location=data.get("location", ""),
             weather=data.get("weather", ""),
             temp_c=temp,
             context_source=data.get("context_source", ""),
             context_updated_at=data.get("context_updated_at", ""),
+            writing_duration_sec=duration,
         )
         return body, fm
 

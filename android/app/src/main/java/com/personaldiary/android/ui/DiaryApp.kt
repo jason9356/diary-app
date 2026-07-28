@@ -1,6 +1,7 @@
 package com.personaldiary.android.ui
 
 import android.Manifest
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -25,8 +26,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.ListAlt
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,12 +38,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -54,7 +61,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.graphics.BitmapFactory
 import com.personaldiary.android.DiaryApplication
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.ui.theme.InkAccent
@@ -67,6 +73,7 @@ import java.util.Locale
 fun DiaryApp(viewModel: DiaryViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var tab by remember { mutableIntStateOf(0) }
+    var showSyncSettings by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -91,6 +98,18 @@ fun DiaryApp(viewModel: DiaryViewModel) {
         ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) viewModel.addImage(uri)
+    }
+
+    if (showSyncSettings) {
+        SyncSettingsDialog(
+            endpoint = state.syncEndpoint,
+            token = state.syncToken,
+            onDismiss = { showSyncSettings = false },
+            onSave = { ep, tok ->
+                viewModel.saveSyncSettings(ep, tok)
+                showSyncSettings = false
+            },
+        )
     }
 
     Scaffold(
@@ -130,6 +149,14 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                 padding = padding,
                 onBodyChange = viewModel::onBodyChange,
                 onPickImage = { imageLauncher.launch("image/*") },
+                onSync = {
+                    if (state.syncEndpoint.isBlank() || state.syncToken.isBlank()) {
+                        showSyncSettings = true
+                    } else {
+                        viewModel.syncNow()
+                    }
+                },
+                onSyncSettings = { showSyncSettings = true },
             )
             else -> TimelinePane(
                 entries = state.timeline,
@@ -144,11 +171,53 @@ fun DiaryApp(viewModel: DiaryViewModel) {
 }
 
 @Composable
+private fun SyncSettingsDialog(
+    endpoint: String,
+    token: String,
+    onDismiss: () -> Unit,
+    onSave: (String, String) -> Unit,
+) {
+    var ep by remember { mutableStateOf(endpoint) }
+    var tok by remember { mutableStateOf(token) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("同步设置") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = ep,
+                    onValueChange = { ep = it },
+                    label = { Text("服务地址") },
+                    placeholder = { Text("https://your-vps") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = tok,
+                    onValueChange = { tok = it },
+                    label = { Text("Token") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(ep, tok) }) { Text("保存") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
+    )
+}
+
+@Composable
 private fun EditorPane(
     state: DiaryUiState,
     padding: PaddingValues,
     onBodyChange: (String) -> Unit,
     onPickImage: () -> Unit,
+    onSync: () -> Unit,
+    onSyncSettings: () -> Unit,
 ) {
     val entry = state.entry
     val app = LocalContext.current.applicationContext as DiaryApplication
@@ -159,11 +228,41 @@ private fun EditorPane(
             .padding(padding)
             .padding(horizontal = 22.dp, vertical = 16.dp)
     ) {
-        Text(
-            text = "日记",
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.onBackground,
-        )
+        Row(
+            Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = "日记",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onBackground,
+            )
+            Row {
+                IconButton(onClick = onSyncSettings) {
+                    Icon(
+                        Icons.Outlined.Settings,
+                        contentDescription = "同步设置",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                IconButton(onClick = onSync, enabled = !state.syncing) {
+                    if (state.syncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    } else {
+                        Icon(
+                            Icons.Outlined.CloudSync,
+                            contentDescription = "同步",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+            }
+        }
         Spacer(Modifier.height(10.dp))
         Text(
             text = formatHeading(entry.entryDate),

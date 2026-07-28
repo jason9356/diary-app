@@ -52,4 +52,6 @@ gradlew.bat installDebug
 
 ## 与桌面同步
 
-本版只做本地日记 + 手机天气权威字段预留。跨设备同步服务尚未落地；协议已按共用目录 / front matter 设计，日后对接即可。
+见 [sync-protocol.md](./sync-protocol.md)。Android：设置图标配置 endpoint + token，云同步按钮推送/拉取当日并处理增量。
+
+本地开发可用 `http://10.0.2.2:8000`（模拟器访问宿主机）或局域网 HTTPS。

@@ -162,12 +162,14 @@ class Database:
                     location, weather, temp_c, context_source, context_updated_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(entry_date) DO UPDATE SET
+                    id=excluded.id,
                     title=excluded.title,
                     word_count=excluded.word_count,
                     updated_at=excluded.updated_at,
                     writing_duration_sec=excluded.writing_duration_sec,
                     file_relpath=excluded.file_relpath,
                     content_hash=excluded.content_hash,
+                    synced_at=excluded.synced_at,
                     deleted=excluded.deleted,
                     location=excluded.location,
                     weather=excluded.weather,
@@ -210,6 +212,13 @@ class Database:
         )
         row = cur.fetchone()
         return self._row_to_meta(row) if row else None
+
+    def mark_synced(self, entry_date: str, synced_at: str) -> None:
+        with self.cursor() as cur:
+            cur.execute(
+                "UPDATE entries SET synced_at=? WHERE entry_date=?",
+                (synced_at, entry_date),
+            )
 
     def list_dates_with_entries(
         self,

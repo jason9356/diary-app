@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from app.config import AppConfig, save_config
 from app.diary_service import DiaryService
+from app.sync_client import SyncClient
 from app.weather import WeatherSnapshot, fetch_desktop
 from app.writing_timer import WritingTimer
 from ui.calendar_view import CalendarPanel
@@ -68,6 +69,11 @@ class MainWindow(QMainWindow):
         self._search_keyword = ""
         self._context_source: str = ""
         self._weather_thread: QThread | None = None
+        if not self.config.device_id.strip():
+            import uuid
+
+            self.config.device_id = str(uuid.uuid4())
+            save_config(self.config)
 
         self.setWindowTitle("日记")
         self.setMinimumSize(config.min_window_width, config.min_window_height)
@@ -186,6 +192,15 @@ class MainWindow(QMainWindow):
         act_export.setShortcut(QKeySequence("Ctrl+E"))
         act_export.triggered.connect(self.export_zip)
         file_menu.addAction(act_export)
+
+        act_sync = QAction("同步…", self)
+        act_sync.setShortcut(QKeySequence("Ctrl+Shift+S"))
+        act_sync.triggered.connect(self.sync_now)
+        file_menu.addAction(act_sync)
+
+        act_sync_cfg = QAction("同步设置…", self)
+        act_sync_cfg.triggered.connect(self.edit_sync_settings)
+        file_menu.addAction(act_sync_cfg)
 
         file_menu.addSeparator()
         act_quit = QAction("退出", self)
@@ -618,6 +633,66 @@ class MainWindow(QMainWindow):
     def _on_search_open(self, entry_date: str) -> None:
         self.open_date(entry_date, focus=True)
         highlight_in_editor(self.editor.editor, self._search_keyword)
+
+    # ----- Sync -----
+
+    def edit_sync_settings(self) -> None:
+        dlg = QDialog(self)
+        dlg.setWindowTitle("同步设置")
+        form = QFormLayout(dlg)
+        endpoint = QLineEdit(self.config.sync_endpoint)
+        endpoint.setPlaceholderText("https://your-vps.example.com 或 http://127.0.0.1:8000")
+        token = QLineEdit(self.config.sync_token)
+        token.setEchoMode(QLineEdit.EchoMode.Password)
+        token.setPlaceholderText("Bearer token（DIARY_SYNC_TOKEN）")
+        form.addRow("服务地址", endpoint)
+        form.addRow("Token", token)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
+        )
+        form.addRow(buttons)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+        self.config.sync_endpoint = endpoint.text().strip()
+        self.config.sync_token = token.text().strip()
+        save_config(self.config)
+        self._set_status("同步设置已保存")
+
+    def sync_now(self) -> None:
+        self.save_current()
+        # Reload token from secrets in case settings were edited.
+        from app.config import load_config
+
+        fresh = load_config()
+        self.config.sync_endpoint = fresh.sync_endpoint
+        self.config.sync_token = fresh.sync_token
+        self.config.sync_cursor = fresh.sync_cursor
+
+        if not self.config.sync_endpoint.strip() or not self.config.sync_token.strip():
+            self.edit_sync_settings()
+            if not self.config.sync_endpoint.strip() or not self.config.sync_token.strip():
+                return
+
+        self._set_status("正在同步…")
+        # Run on UI thread with short HTTP timeouts — avoids SQLite cross-thread hangs.
+        QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            client = SyncClient(self.config, self.service)
+            result = client.sync_today_and_changes(self._current_date)
+        finally:
+            QGuiApplication.restoreOverrideCursor()
+
+        self.open_date(self._current_date, focus=False)
+        self.refresh_sidebar()
+        self._set_status(result.message)
+        if result.message.startswith("同步失败") or (
+            "失败" in result.message and "推送" not in result.message
+        ):
+            QMessageBox.warning(self, "同步", result.message)
+        else:
+            QMessageBox.information(self, "同步", result.message)
 
     # ----- Export -----
 

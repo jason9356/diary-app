@@ -22,6 +22,7 @@ data/diary/**
 data/assets/**
 !data/diary/.gitkeep
 !data/assets/.gitkeep
+data/sync_secrets.json
 logs/**
 !logs/.gitkeep
 *.db

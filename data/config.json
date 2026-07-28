@@ -11,5 +11,6 @@
   "min_window_height": 520,
   "sync_endpoint": "",
   "device_id": "",
+  "sync_cursor": 0,
   "weather_city": ""
 }

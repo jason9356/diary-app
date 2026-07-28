@@ -91,10 +91,10 @@ data/
         └── <image>.jpg
 ```
 
-- **Markdown**：纯文本可读；front matter 含地点/天气等（便于日后同步）
-- **SQLite**：标题、日期、字数、写作时长、地点/天气、内容哈希
+- **Markdown**：纯文本可读；front matter 含 `id` / `updated_at` / 地点天气等（同步协议）
+- **SQLite**：标题、日期、字数、写作时长、地点/天气、内容哈希、`synced_at`
 - **天气**：可选在 `config.json` 设置 `weather_city`（如 `"上海"`）；未设置时尝试 IP 粗定位。需联网；手机端同步后优先生效
-- `docker-compose.yaml` 预留未来同步服务，当前本地版不需要启动
+- **同步服务**：见 [docs/sync-protocol.md](./docs/sync-protocol.md) 与 [server/README.md](./server/README.md)；桌面菜单「同步…」/ `Ctrl+Shift+S`
 
 ## 项目结构
 
@@ -125,6 +125,7 @@ diary-app/
 | 天气 | 点标题下地点行；或菜单「获取天气 / 编辑地点」 |
 | 搜索 | 侧边栏「搜索」，点结果跳转并高亮 |
 | 导出 | 侧边栏「导出」或 `Ctrl+E` |
+| 同步 | 菜单「同步…」`Ctrl+Shift+S`；先「同步设置」填 endpoint + token |
 | 主题 | 「主题」按钮或 `Ctrl+Shift+L` |
 | 今天 | `Ctrl+T` |
 
@@ -139,9 +140,9 @@ diary-app/
 
 ## 设计说明（后续扩展）
 
-- 每条日记有稳定 `UUID`、`content_hash`、`synced_at` 字段，便于以后做服务器同步与安卓端
-- 文件路径约定与移动端可共用同一套目录协议
-- 第一版不做：登录、同步、标签、统计、加密
+- 每条日记有稳定 `UUID`、`content_hash`、`synced_at`；front matter 同步 `id` / 时间戳
+- 文件路径约定与移动端共用；同步 API 见 `docs/sync-protocol.md`
+- 仍未做：多用户、标签、统计、E2E 加密
 
 ## 日志与排错
 

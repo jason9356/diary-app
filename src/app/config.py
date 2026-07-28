@@ -39,9 +39,11 @@ class AppConfig:
     min_window_width: int = 800
     min_window_height: int = 520
 
-    # Reserved for future sync clients (Android / server).
+    # Sync (personal VPS). Token stays local — do not commit real values.
     sync_endpoint: str = ""
+    sync_token: str = ""
     device_id: str = ""
+    sync_cursor: int = 0
 
     # Preferred city for Open-Meteo (desktop). Empty → IP geolocation once.
     weather_city: str = ""
@@ -75,10 +77,19 @@ def load_config() -> AppConfig:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             for key, value in raw.items():
-                if hasattr(cfg, key):
+                if hasattr(cfg, key) and key != "sync_token":
                     setattr(cfg, key, value)
         except Exception as exc:  # noqa: BLE001 — recover with defaults
             logger.warning("Failed to load config, using defaults: %s", exc)
+
+    secrets = project_root() / "data" / "sync_secrets.json"
+    if secrets.exists():
+        try:
+            sec = json.loads(secrets.read_text(encoding="utf-8"))
+            if isinstance(sec.get("sync_token"), str):
+                cfg.sync_token = sec["sync_token"]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to load sync secrets: %s", exc)
 
     # Empty / missing data_dir → project-local default (portable; no machine path).
     if not str(cfg.data_dir).strip():
@@ -96,6 +107,7 @@ def save_config(cfg: AppConfig) -> None:
     path = cfg.config_path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = asdict(cfg)
+    token = payload.pop("sync_token", "")
     # Keep default data location as "" so tracked config stays machine-agnostic.
     try:
         if not str(cfg.data_dir).strip() or Path(cfg.data_dir).resolve() == default_data_dir().resolve():
@@ -103,4 +115,9 @@ def save_config(cfg: AppConfig) -> None:
     except OSError:
         payload["data_dir"] = ""
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    secrets = project_root() / "data" / "sync_secrets.json"
+    secrets.write_text(
+        json.dumps({"sync_token": token}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
     logger.debug("Config saved → %s", path)

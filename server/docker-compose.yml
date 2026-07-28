@@ -1,0 +1,22 @@
+# Diary sync API — single-user. Set DIARY_SYNC_TOKEN before starting.
+#
+#   cd server
+#   set DIARY_SYNC_TOKEN=your-long-random-token
+#   docker compose up -d --build
+#
+# Local without Docker:
+#   pip install -r requirements.txt
+#   set DIARY_SYNC_TOKEN=dev-change-me
+#   uvicorn app.main:app --reload --port 8000
+
+services:
+  sync-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      DIARY_SYNC_TOKEN: ${DIARY_SYNC_TOKEN:?set DIARY_SYNC_TOKEN}
+      DIARY_SYNC_DATA: /data
+    volumes:
+      - ./data:/data
+    restart: unless-stopped

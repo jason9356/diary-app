@@ -6,17 +6,18 @@ SET ANDROID_SDK_ROOT=%ANDROID_HOME%
 
 SET WRAPPER_JAR=%~dp0gradle\wrapper\gradle-wrapper.jar
 IF EXIST "%WRAPPER_JAR%" (
-  FOR %%A IN ("%WRAPPER_JAR%") DO IF %%~zA GTR 10000 (
-    SET CLASSPATH=%WRAPPER_JAR%
-    "%JAVA_HOME%\bin\java.exe" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% -classpath "%CLASSPATH%" org.gradle.wrapper.GradleWrapperMain %*
-    EXIT /B %ERRORLEVEL%
+  FOR %%A IN ("%WRAPPER_JAR%") DO (
+    IF %%~zA GTR 10000 (
+      "%JAVA_HOME%\bin\java.exe" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% -classpath "%WRAPPER_JAR%" org.gradle.wrapper.GradleWrapperMain %*
+      EXIT /B %ERRORLEVEL%
+    )
   )
 )
 
-IF EXIST "%TEMP%\gradle-8.9\bin\gradle.bat" (
-  "%TEMP%\gradle-8.9\bin\gradle.bat" %*
+IF EXIST "%USERPROFILE%\.gradle-dist\gradle-8.9\bin\gradle.bat" (
+  "%USERPROFILE%\.gradle-dist\gradle-8.9\bin\gradle.bat" %*
   EXIT /B %ERRORLEVEL%
 )
 
-ECHO Missing gradle-wrapper.jar and %%TEMP%%\gradle-8.9. Open android/ in Android Studio once, or unpack Gradle 8.9.
+ECHO Missing usable gradle-wrapper.jar. Re-download wrapper or install Gradle 8.9.
 EXIT /B 1
