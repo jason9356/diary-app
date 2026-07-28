@@ -67,6 +67,7 @@ class DiaryEditor(QWidget):
         self.filmstrip = ImageFilmstrip()
         self.filmstrip.set_data_root(self._data_root)
         self.filmstrip.image_clicked.connect(self._on_film_click)
+        self.filmstrip.setVisible(False)  # display deferred; upload entry kept
 
         self.editor = QPlainTextEdit()
         self.editor.setObjectName("diaryEditor")
@@ -250,7 +251,9 @@ class DiaryEditor(QWidget):
         self.context_label.style().polish(self.context_label)
 
     def set_day_images(self, rel_paths: list[str]) -> None:
-        self.filmstrip.set_images(rel_paths)
+        # Image preview deferred — keep upload entry, hide filmstrip.
+        self.filmstrip.set_images([])
+        self.filmstrip.setVisible(False)
 
     def set_markdown(self, text: str) -> None:
         self._loading = True

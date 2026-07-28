@@ -44,7 +44,7 @@ DARK = {
 def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     from utils.fonts import css_stack
 
-    # 全部使用霞鹜文楷；mono 仅略收紧字号，不再切等宽。
+    # Unified CJK sans for UI + editor; mono only tightens size slightly.
     family = css_stack()
     ui_font = family
     display_font = family

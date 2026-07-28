@@ -175,7 +175,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                         entry = saved,
                         dayNotes = repo.listForDate(entry.entryDate),
                         timeline = repo.listTimeline(),
-                        status = "已插入图片",
+                        status = "图片已保存（暂不预览）",
                     )
                 }
             } catch (e: Exception) {

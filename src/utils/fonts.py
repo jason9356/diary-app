@@ -1,25 +1,36 @@
 """
-App typeface: 霞鹜文楷 (LXGW WenKai).
+App typeface: unified CJK sans stack.
 
-Note: the installed face is Regular-only. True bold faces are unavailable,
-so emphasis uses Qt algorithmic emboldening + size/tracking hierarchy.
+WenKai is lovely for long reading but weak for UI chrome (calendar, buttons,
+dense lists). Prefer system UI sans — clear at all sizes, real bold weights.
 """
 from __future__ import annotations
 
 from PySide6.QtGui import QFont, QFontDatabase
 
-# Preferred PostScript / English family name; Chinese name as fallback.
-_PREFERRED = ("LXGW WenKai", "霞鹜文楷")
-_FALLBACK = "'LXGW WenKai', '霞鹜文楷', 'Microsoft YaHei UI', sans-serif"
+# Prefer clear UI sans with proper bold; English UI fonts as last resort.
+_PREFERRED = (
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "PingFang SC",
+    "Noto Sans CJK SC",
+    "Noto Sans SC",
+    "Source Han Sans SC",
+    "Segoe UI",
+)
+_FALLBACK = (
+    "'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', "
+    "'Noto Sans CJK SC', 'Noto Sans SC', 'Segoe UI', sans-serif"
+)
 
 
 def resolve_family() -> str:
-    """Return an installed WenKai family name, or the English id as last resort."""
+    """Return the best installed family from the preferred list."""
     available = set(QFontDatabase.families())
     for name in _PREFERRED:
         if name in available:
             return name
-    return "LXGW WenKai"
+    return "Sans Serif"
 
 
 def css_stack() -> str:
@@ -34,8 +45,13 @@ def app_font(point_size: int = 12) -> QFont:
     return font
 
 
-def emphasis_font(*, point_size: int | None = None, pixel_size: int | None = None, bold: bool = True) -> QFont:
-    """WenKai with algorithmic bold — use for titles / selected chrome."""
+def emphasis_font(
+    *,
+    point_size: int | None = None,
+    pixel_size: int | None = None,
+    bold: bool = True,
+) -> QFont:
+    """Title / selected chrome — uses real bold when the family has it."""
     font = QFont(resolve_family())
     if pixel_size is not None:
         font.setPixelSize(pixel_size)
@@ -43,7 +59,7 @@ def emphasis_font(*, point_size: int | None = None, pixel_size: int | None = Non
         font.setPointSize(point_size)
     if bold:
         font.setBold(True)
-        font.setWeight(QFont.Weight.Bold)
+        font.setWeight(QFont.Weight.DemiBold)
     font.setStyleStrategy(
         QFont.StyleStrategy.PreferQuality
         | QFont.StyleStrategy.PreferAntialias

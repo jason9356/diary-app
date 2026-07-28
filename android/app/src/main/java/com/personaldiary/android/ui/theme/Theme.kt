@@ -7,11 +7,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.personaldiary.android.R
 
 // Quiet ink — matches desktop styles.py
 val InkBg = Color(0xFFF2F4F1)
@@ -32,7 +30,8 @@ val InkAccentDark = Color(0xFF7FAE97)
 val InkAccentSoftDark = Color(0xFF24332C)
 val InkBorderDark = Color(0xFF2A322D)
 
-val WenKaiFamily = FontFamily(Font(R.font.lxgw_wenkai, weight = FontWeight.Normal))
+/** Unified UI/body sans — system CJK-capable sans (no embedded WenKai). */
+val AppFontFamily: FontFamily = FontFamily.SansSerif
 
 private val LightColors = lightColorScheme(
     primary = InkAccent,
@@ -71,45 +70,45 @@ fun DiaryTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
         colorScheme = colors,
         typography = MaterialTheme.typography.copy(
             displayLarge = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 28.sp,
                 color = colors.onBackground,
             ),
             headlineMedium = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 24.sp,
             ),
             titleLarge = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
             ),
             titleMedium = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp,
             ),
             bodyLarge = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Normal,
                 fontSize = 16.sp,
                 lineHeight = 26.sp,
             ),
             bodyMedium = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Normal,
                 fontSize = 14.sp,
                 lineHeight = 22.sp,
             ),
             labelLarge = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Bold,
                 fontSize = 14.sp,
             ),
             labelMedium = TextStyle(
-                fontFamily = WenKaiFamily,
+                fontFamily = AppFontFamily,
                 fontWeight = FontWeight.Normal,
                 fontSize = 13.sp,
             ),

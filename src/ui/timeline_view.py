@@ -117,31 +117,5 @@ class TimelinePanel(QWidget):
 
     @staticmethod
     def _thumbnail(entry: DiaryEntry, service: DiaryService) -> QPixmap | None:
-        if entry.image_paths:
-            p = Path(entry.image_paths[0])
-            if p.exists():
-                pix = QPixmap(str(p))
-                if not pix.isNull():
-                    return pix.scaled(
-                        48,
-                        48,
-                        Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-                        Qt.TransformationMode.SmoothTransformation,
-                    )
-        from app.diary_service import first_image_relpath
-
-        rel = first_image_relpath(entry.body)
-        if not rel:
-            return None
-        path = service.resolve_asset(rel)
-        if not path.exists():
-            return None
-        pix = QPixmap(str(path))
-        if pix.isNull():
-            return None
-        return pix.scaled(
-            48,
-            48,
-            Qt.AspectRatioMode.KeepAspectRatioByExpanding,
-            Qt.TransformationMode.SmoothTransformation,
-        )
+        # Image thumbnails deferred — avoid broken/black previews in the list.
+        return None

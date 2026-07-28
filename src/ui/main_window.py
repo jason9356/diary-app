@@ -313,7 +313,6 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(build_stylesheet(palette, mono=mono))
         self.calendar_panel.apply_palette(palette)
         self.editor.set_theme_palette(palette, mono=mono)
-        # WenKai is Regular-only — setBold() triggers algorithmic emboldening.
         self.brand_label.setFont(emphasis_font(pixel_size=22, bold=True))
         self.calendar_panel.title.setFont(emphasis_font(pixel_size=13, bold=True))
         self.timeline_panel.title.setFont(emphasis_font(pixel_size=13, bold=True))
@@ -520,9 +519,9 @@ class MainWindow(QMainWindow):
         try:
             rel = self.service.save_dropped_image(self._entry_id, Path(path))
             self.editor.insert_image_markdown(rel)
+            self.editor.set_day_images([])  # display deferred
             self.save_current()
-            self.editor.set_day_images(self.service.list_image_rels(self._entry_id))
-            self._set_status(f"已插入图片 {Path(rel).name}")
+            self._set_status(f"已插入图片（暂不预览）· {Path(rel).name}")
         except Exception as exc:  # noqa: BLE001
             logger.exception("Image drop failed")
             QMessageBox.warning(self, "插入图片失败", str(exc))
@@ -696,6 +695,13 @@ class MainWindow(QMainWindow):
     # ----- Sync -----
 
     def edit_sync_settings(self) -> None:
+        from app.config import load_config
+
+        # Always show the token currently on disk (avoid stale in-memory value).
+        fresh = load_config()
+        self.config.sync_endpoint = fresh.sync_endpoint
+        self.config.sync_token = fresh.sync_token
+
         dlg = QDialog(self)
         dlg.setWindowTitle("同步设置")
         form = QFormLayout(dlg)
@@ -716,7 +722,7 @@ class MainWindow(QMainWindow):
             return
         self.config.sync_endpoint = endpoint.text().strip()
         self.config.sync_token = token.text().strip()
-        save_config(self.config)
+        save_config(self.config, update_token=True)
         self._set_status("同步设置已保存")
 
     def sync_now(self) -> None:

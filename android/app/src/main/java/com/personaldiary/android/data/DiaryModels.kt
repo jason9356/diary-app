@@ -61,3 +61,31 @@ object DiaryDates {
         return "${s}°"
     }
 }
+
+/** Image markdown helpers — keep links on disk, hide broken previews in the editor. */
+object MarkdownImages {
+    private val imgRe = Regex("""!\[[^\]]*]\([^)]+\)""")
+
+    fun extract(body: String): List<String> =
+        imgRe.findAll(body).map { it.value }.toList()
+
+    fun stripForDisplay(body: String): String =
+        body.replace(imgRe, "［图片］")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+
+    fun mergeEditorText(editorMarkdown: String, canonicalBody: String): String {
+        val text = editorMarkdown
+            .replace(imgRe, "")
+            .replace("［图片］", "")
+            .replace(Regex("\n{3,}"), "\n\n")
+            .trim()
+        val images = extract(canonicalBody)
+        return when {
+            text.isBlank() && images.isEmpty() -> ""
+            text.isBlank() -> images.joinToString("\n\n")
+            images.isEmpty() -> text
+            else -> text + "\n\n" + images.joinToString("\n\n")
+        }
+    }
+}

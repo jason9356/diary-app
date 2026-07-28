@@ -21,10 +21,10 @@ _EXTENSIONS = [
 
 def md_to_html(source: str, *, base_dir: Path, palette: dict[str, str], mono: bool = False) -> str:
     """Render Markdown to a full HTML document with themed CSS."""
-    body = markdown.markdown(source or "", extensions=_EXTENSIONS)
-    body = _group_image_runs(body)
+    # Image display is disabled for now — keep markdown on disk, show a placeholder.
+    safe = _strip_images_for_display(source or "")
+    body = markdown.markdown(safe, extensions=_EXTENSIONS)
     css = _preview_css(palette, mono=mono)
-    # file:/// base lets relative assets/… paths resolve under data root.
     base = base_dir.resolve().as_uri().rstrip("/") + "/"
     empty = '<p class="empty">开始书写，预览将显示在这里…</p>'
     content = body if body.strip() else empty
@@ -39,55 +39,18 @@ def md_to_html(source: str, *, base_dir: Path, palette: dict[str, str], mono: bo
     )
 
 
+_IMG_MD_RE = re.compile(r"!\[[^\]]*]\([^)]+\)")
+
+
+def _strip_images_for_display(source: str) -> str:
+    """Replace image markdown with a text marker; do not render binary assets."""
+    text = _IMG_MD_RE.sub("［图片］", source)
+    return re.sub(r"\n{3,}", "\n\n", text)
+
+
 def _group_image_runs(body: str) -> str:
-    """
-    Collapse consecutive image-only paragraphs into a gallery:
-    1 image → figure.solo; 2+ → div.gallery (2-col).
-    """
-    token_re = re.compile(r"<p>\s*(<img\b[^>]*>)\s*</p>", re.IGNORECASE)
-    out: list[str] = []
-    last = 0
-    run: list[str] = []
-
-    def flush() -> None:
-        nonlocal run
-        if not run:
-            return
-        if len(run) == 1:
-            out.append(f'<figure class="solo">{run[0]}</figure>')
-        else:
-            # QTextBrowser lacks CSS grid — use a simple 2-col table.
-            rows: list[str] = []
-            for i in range(0, len(run), 2):
-                left = f'<td class="cell">{run[i]}</td>'
-                right = (
-                    f'<td class="cell">{run[i + 1]}</td>'
-                    if i + 1 < len(run)
-                    else '<td class="cell"></td>'
-                )
-                rows.append(f"<tr>{left}{right}</tr>")
-            out.append(
-                '<table class="gallery" cellspacing="8" cellpadding="0">'
-                + "".join(rows)
-                + "</table>"
-            )
-        run = []
-
-    for m in token_re.finditer(body):
-        between = body[last:m.start()]
-        if between.strip():
-            flush()
-            out.append(between)
-        elif between and run:
-            # whitespace between images — keep run
-            pass
-        elif between:
-            out.append(between)
-        run.append(m.group(1))
-        last = m.end()
-    flush()
-    out.append(body[last:])
-    return "".join(out)
+    """Legacy helper retained unused — image rendering is deferred."""
+    return body
 
 
 def _preview_css(p: dict[str, str], mono: bool = False) -> str:

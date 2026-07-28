@@ -68,9 +68,10 @@ import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.personaldiary.android.data.DayContext
 import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
+import com.personaldiary.android.data.MarkdownImages
 import com.personaldiary.android.data.TimelineDay
 import com.personaldiary.android.ui.theme.InkAccent
-import com.personaldiary.android.ui.theme.WenKaiFamily
+import com.personaldiary.android.ui.theme.AppFontFamily
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.io.File
@@ -388,19 +389,20 @@ private fun NoteEditorScreen(
     val scrollState = rememberScrollState()
 
     LaunchedEffect(entry.id) {
-        if (loadedEntryId != entry.id) {
-            richTextState.setMarkdown(entry.body)
-            loadedEntryId = entry.id
-        }
+        richTextState.setMarkdown(MarkdownImages.stripForDisplay(entry.body))
+        loadedEntryId = entry.id
     }
 
-    LaunchedEffect(richTextState, loadedEntryId, entry.id) {
+    LaunchedEffect(richTextState, loadedEntryId, entry.id, entry.body) {
         snapshotFlow { richTextState.toMarkdown() }
             .distinctUntilChanged()
             .collect { md ->
-                if (loadedEntryId == entry.id && md != entry.body) {
-                    delay(500)
-                    onBodyChange(md)
+                if (loadedEntryId == entry.id) {
+                    val merged = MarkdownImages.mergeEditorText(md, entry.body)
+                    if (merged != entry.body) {
+                        delay(500)
+                        onBodyChange(merged)
+                    }
                 }
             }
     }
@@ -416,9 +418,10 @@ private fun NoteEditorScreen(
     ) { uri ->
         if (uri != null) {
             onPickImage(uri) { rel ->
-                val md = richTextState.toMarkdown().trimEnd() + "\n\n![image]($rel)\n"
-                richTextState.setMarkdown(md)
-                onBodyChange(md)
+                val text = MarkdownImages.mergeEditorText(richTextState.toMarkdown(), entry.body)
+                val withImg = text.trimEnd() + "\n\n![image]($rel)\n"
+                onBodyChange(withImg)
+                richTextState.setMarkdown(MarkdownImages.stripForDisplay(withImg))
             }
         }
     }
@@ -487,7 +490,7 @@ private fun NoteEditorScreen(
                         .fillMaxWidth()
                         .bringIntoViewRequester(bringIntoViewRequester),
                     textStyle = androidx.compose.ui.text.TextStyle(
-                        fontFamily = WenKaiFamily,
+                        fontFamily = AppFontFamily,
                         fontSize = 16.sp,
                         lineHeight = 26.sp,
                         color = MaterialTheme.colorScheme.onSurface,

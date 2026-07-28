@@ -102,8 +102,13 @@ def load_config() -> AppConfig:
     return cfg
 
 
-def save_config(cfg: AppConfig) -> None:
-    """Persist preferences to JSON."""
+def save_config(cfg: AppConfig, *, update_token: bool = False) -> None:
+    """Persist preferences to JSON.
+
+    ``sync_token`` is only written when ``update_token=True`` (sync settings dialog).
+    Other saves (window size, theme, …) must not overwrite ``sync_secrets.json``
+    with a stale in-memory token.
+    """
     path = cfg.config_path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = asdict(cfg)
@@ -115,9 +120,10 @@ def save_config(cfg: AppConfig) -> None:
     except OSError:
         payload["data_dir"] = ""
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    secrets = project_root() / "data" / "sync_secrets.json"
-    secrets.write_text(
-        json.dumps({"sync_token": token}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    if update_token:
+        secrets = project_root() / "data" / "sync_secrets.json"
+        secrets.write_text(
+            json.dumps({"sync_token": token}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
     logger.debug("Config saved → %s", path)
