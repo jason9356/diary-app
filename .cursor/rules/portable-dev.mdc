@@ -1,0 +1,32 @@
+---
+description: Multi-machine portable workflow — no machine paths, recreate venv locally
+alwaysApply: true
+---
+
+# Portable multi-machine development
+
+This repo is developed on more than one Windows PC via GitHub. Keep it machine-agnostic.
+
+## Never commit / never sync
+
+- `.venv/`, `venv/`, `__pycache__/`, `*.db`, `logs/`, personal diary content under `data/diary/`, `data/assets/`
+- Absolute paths like `C:\Users\...`, `D:\VNPY\...` in tracked files (`config.json`, README, scripts)
+
+## Config
+
+- `data/config.json` → `data_dir` must be `""` (default next to project). `save_config` already strips the default absolute path; do not reintroduce machine paths.
+
+## Environment on each PC
+
+- Virtualenvs are **not portable**. After clone or switching machines:
+  1. Install Python 3.10+ (PATH enabled)
+  2. Run `setup.bat` (or delete `.venv` then recreate)
+  3. Use `run.bat` for day-to-day launch/debug
+- If `.venv` points at a missing interpreter, delete it and run `setup.bat` — do not chase the old path.
+
+## Agent behavior
+
+- Prefer editing source and running via `.venv\Scripts\python.exe` or `run.bat`
+- Do not copy `.venv` between PCs; do not commit it
+- Do not hardcode local Python/install paths in bat/vbs/docs
+- Before commit/push, grep for `Users\`, `VNPY`, and other machine-specific roots

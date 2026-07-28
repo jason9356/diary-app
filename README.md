@@ -24,32 +24,48 @@
 ### 1. 环境要求
 
 - Windows 10/11
-- Python 3.10 及以上（推荐 3.11+）
+- Python 3.10 及以上（推荐 3.11+），安装时勾选 **Add python.exe to PATH**
 
-### 2. 安装依赖
+### 2. 安装依赖（推荐）
 
-在项目根目录执行：
+在项目根目录双击或运行：
 
 ```powershell
-# 在项目根目录执行
+.\setup.bat
+```
+
+会在本机创建 `.venv` 并安装 `requirements.txt`。换电脑 / 新 clone 后都重新跑一次即可（**不要**把别人的 `.venv` 拷过来）。
+
+手动等价命令：
+
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-# If download is slow/unstable in China, use a mirror:
+# 国内镜像可选：
 # pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 ```
 
-### 3. 运行
+### 3. 运行 / 调试
 
 ```powershell
-python src\main.py
+.\run.bat
+# 或
+.\.venv\Scripts\python.exe src\main.py
 ```
 
-也可以双击 `run.bat`（会优先使用 `.venv`）。
+`run.bat` 若发现 `.venv` 不可用，会自动调用 `setup.bat`。
+
+### 换机继续开发
+
+1. `git pull`
+2. 本机有 Python 后执行 `setup.bat`（仅首次或 `.venv` 损坏时）
+3. 改代码 → 本地跑 → `git commit` / `push`  
+日记正文在 `data/diary/`，默认不进 Git；换机要带日记请自行拷贝 `data/`（勿提交本机绝对路径）。
 
 ### 4. 打包为可执行文件（正式分发）
 
-开发阶段用 `run.bat` / `python src\main.py` 即可，改完马上看效果。  
+开发阶段用 `run.bat` 即可，改完马上看效果。  
 给别人用、或想双击一个图标启动时，再用 PyInstaller 打成独立程序：
 
 ```powershell
