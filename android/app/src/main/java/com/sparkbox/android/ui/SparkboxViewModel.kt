@@ -213,11 +213,13 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
     fun onBodyChange(text: String) {
         val current = _state.value.entry ?: return
         _state.update { it.copy(entry = current.copy(body = text)) }
-        autosaveJob?.cancel()
-        autosaveJob = viewModelScope.launch {
-            delay(500)
-            saveNow()
-        }
+        scheduleAutosave()
+    }
+
+    fun onTitleChange(title: String) {
+        val current = _state.value.entry ?: return
+        _state.update { it.copy(entry = current.copy(title = title.trim())) }
+        scheduleAutosave()
     }
 
     fun onTagsChange(tagsCsv: String) {
@@ -227,6 +229,19 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
             .filter { it.isNotEmpty() }
             .distinct()
         _state.update { it.copy(entry = current.copy(tags = tags)) }
+        scheduleAutosave()
+    }
+
+    fun toggleTag(tag: String) {
+        val current = _state.value.entry ?: return
+        val t = tag.trim().removePrefix("#")
+        if (t.isEmpty()) return
+        val next = if (t in current.tags) current.tags - t else (current.tags + t).distinct()
+        _state.update { it.copy(entry = current.copy(tags = next)) }
+        scheduleAutosave()
+    }
+
+    private fun scheduleAutosave() {
         autosaveJob?.cancel()
         autosaveJob = viewModelScope.launch {
             delay(500)
@@ -397,7 +412,10 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun captureContextOnce(entryDate: String) {
         viewModelScope.launch {
-            if (repo.getDayContext(entryDate).hasContext) return@launch
+            val existing = repo.getDayContext(entryDate)
+            // Demo / empty seeds must not block a real phone fix.
+            val lockedByPhone = existing.contextSource == "phone" && existing.hasContext
+            if (lockedByPhone) return@launch
             if (!locationHelper.hasPermission()) {
                 _state.update { it.copy(needLocationPermission = true) }
                 return@launch
@@ -410,11 +428,11 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
             }
             val label = placeResolver.labelFor(loc.latitude, loc.longitude)
             val snap = weatherService.fetch(loc.latitude, loc.longitude, label)
-            if (snap == null || repo.getDayContext(entryDate).hasContext) {
+            if (snap == null) {
                 _state.update { it.copy(weatherLoading = false) }
                 return@launch
             }
-            val ctx = repo.saveContext(entryDate, snap)
+            val ctx = repo.saveContext(entryDate, snap, force = existing.contextSource != "phone")
             _state.update { it.copy(dayContext = ctx, weatherLoading = false) }
         }
     }

@@ -1,1 +1,0 @@
-# Diary sync API package

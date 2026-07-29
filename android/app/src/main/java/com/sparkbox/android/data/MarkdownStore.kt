@@ -1,7 +1,9 @@
 package com.sparkbox.android.data
 
+import org.json.JSONObject
 import java.io.File
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * v2 layout: diary/YYYY/MM/<id>.md
@@ -27,6 +29,9 @@ class MarkdownStore(
         val contextUpdatedAt: String = "",
     )
 
+    private val indexFile = File(diaryRoot, ".id-index.json")
+    private val idIndex = AtomicReference<MutableMap<String, String>?>(null)
+
     init {
         diaryRoot.mkdirs()
     }
@@ -40,6 +45,94 @@ class MarkdownStore(
 
     fun exists(entryId: String, entryDate: String): Boolean =
         pathFor(entryId, entryDate).isFile
+
+    /** O(1) id → date via sidecar index (rebuilt if missing). */
+    fun dateForId(entryId: String): String? {
+        val map = ensureIndex()
+        val date = map[entryId] ?: return null
+        if (exists(entryId, date)) return date
+        // Stale index entry
+        invalidateIndex()
+        return ensureIndex()[entryId]?.takeIf { exists(entryId, it) }
+    }
+
+    fun invalidateIndex() {
+        idIndex.set(null)
+        if (indexFile.isFile) indexFile.delete()
+    }
+
+    private fun ensureIndex(): MutableMap<String, String> {
+        idIndex.get()?.let { return it }
+        synchronized(this) {
+            idIndex.get()?.let { return it }
+            val loaded = loadIndexFile() ?: rebuildIndex()
+            idIndex.set(loaded)
+            return loaded
+        }
+    }
+
+    private fun loadIndexFile(): MutableMap<String, String>? {
+        if (!indexFile.isFile) return null
+        return try {
+            val root = JSONObject(indexFile.readText(Charsets.UTF_8))
+            val notes = root.optJSONObject("notes") ?: return null
+            val out = mutableMapOf<String, String>()
+            val keys = notes.keys()
+            while (keys.hasNext()) {
+                val id = keys.next()
+                val date = notes.optString(id)
+                if (id.isNotBlank() && date.isNotBlank()) out[id] = date
+            }
+            out.ifEmpty { null }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun rebuildIndex(): MutableMap<String, String> {
+        val out = mutableMapOf<String, String>()
+        if (diaryRoot.exists()) {
+            diaryRoot.walkTopDown()
+                .filter { it.isFile && it.extension == "md" }
+                .forEach { path ->
+                    if (DATE_FILE_RE.matches(path.name)) return@forEach
+                    val stem = path.nameWithoutExtension
+                    if (!UUID_RE.matches(stem)) return@forEach
+                    val text = path.readText(Charsets.UTF_8)
+                    val (_, fm) = parse(text)
+                    val entryDate = fm.date
+                    if (entryDate.isNotBlank()) out[stem] = entryDate
+                }
+        }
+        persistIndex(out)
+        return out
+    }
+
+    private fun persistIndex(map: Map<String, String>) {
+        try {
+            diaryRoot.mkdirs()
+            val notes = JSONObject()
+            for ((id, date) in map) notes.put(id, date)
+            indexFile.writeText(
+                JSONObject().put("notes", notes).toString(),
+                Charsets.UTF_8,
+            )
+        } catch (_: Exception) {
+            // Index is a cache; ignore write failures.
+        }
+    }
+
+    private fun indexPut(entryId: String, entryDate: String) {
+        val map = ensureIndex()
+        if (map[entryId] == entryDate) return
+        map[entryId] = entryDate
+        persistIndex(map)
+    }
+
+    private fun indexRemove(entryId: String) {
+        val map = ensureIndex()
+        if (map.remove(entryId) != null) persistIndex(map)
+    }
 
     fun readBody(entryId: String, entryDate: String): String {
         val f = pathFor(entryId, entryDate)
@@ -57,6 +150,7 @@ class MarkdownStore(
         val file = pathFor(entryId, entryDate)
         file.parentFile?.mkdirs()
         file.writeText(markdown, Charsets.UTF_8)
+        indexPut(entryId, entryDate)
     }
 
     fun readFrontMatter(entryId: String, entryDate: String): FrontMatter {
@@ -96,15 +190,20 @@ class MarkdownStore(
         lines += "---"
         val content = lines.joinToString("\n") + "\n\n" + body.trimEnd() + "\n"
         file.writeText(content, Charsets.UTF_8)
+        indexPut(entryId, entryDate)
     }
 
     fun listNoteIds(): List<Pair<String, String>> =
-        listParsedNotes().map { it.id to it.date }
+        ensureIndex().entries.map { it.key to it.value }
 
     /** One filesystem pass: parse each note once (avoids double-read on home refresh). */
     fun listParsedNotes(): List<ParsedNote> {
-        if (!diaryRoot.exists()) return emptyList()
+        if (!diaryRoot.exists()) {
+            invalidateIndex()
+            return emptyList()
+        }
         val found = mutableListOf<ParsedNote>()
+        val rebuilt = mutableMapOf<String, String>()
         diaryRoot.walkTopDown()
             .filter { it.isFile && it.extension == "md" }
             .forEach { path ->
@@ -115,6 +214,7 @@ class MarkdownStore(
                 val (body, fm) = parse(text)
                 val entryDate = fm.date
                 if (entryDate.isBlank()) return@forEach
+                rebuilt[stem] = entryDate
                 found += ParsedNote(
                     id = stem,
                     date = entryDate,
@@ -125,6 +225,8 @@ class MarkdownStore(
                     ),
                 )
             }
+        idIndex.set(rebuilt)
+        persistIndex(rebuilt)
         return found.sortedByDescending { it.date }
     }
 
@@ -172,6 +274,7 @@ class MarkdownStore(
             path.delete()
             count++
         }
+        if (count > 0) invalidateIndex()
         return count
     }
 
@@ -181,13 +284,7 @@ class MarkdownStore(
         if (end < 0) return text to FrontMatter()
         val raw = text.substring(3, end).trim('\n')
         val body = text.substring(end + 4).trimStart('\n')
-        val map = mutableMapOf<String, String>()
-        raw.lineSequence().forEach { line ->
-            val idx = line.indexOf(':')
-            if (idx > 0) {
-                map[line.substring(0, idx).trim()] = line.substring(idx + 1).trim().trim('"')
-            }
-        }
+        val map = parseYamlMap(raw)
         val temp = map["temp_c"]?.toDoubleOrNull()
         val duration = map["writing_duration_sec"]?.toDoubleOrNull()?.toInt() ?: 0
         return body to FrontMatter(
@@ -244,11 +341,7 @@ class MarkdownStore(
         val end = text.indexOf("\n---", 3)
         if (end < 0) return null
         val raw = text.substring(3, end)
-        val map = mutableMapOf<String, String>()
-        raw.lineSequence().forEach { line ->
-            val idx = line.indexOf(':')
-            if (idx > 0) map[line.substring(0, idx).trim()] = line.substring(idx + 1).trim().trim('"')
-        }
+        val map = parseYamlMap(raw)
         if (!map.keys.any { it in setOf("location", "weather", "temp_c", "context_source") }) {
             return null
         }
@@ -267,9 +360,38 @@ class MarkdownStore(
         )
     }
 
+    private fun parseYamlMap(raw: String): Map<String, String> {
+        val map = mutableMapOf<String, String>()
+        raw.lineSequence().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
+            val idx = trimmed.indexOf(':')
+            if (idx <= 0) return@forEach
+            val key = trimmed.substring(0, idx).trim()
+            if (key.isEmpty()) return@forEach
+            map[key] = unquoteYamlScalar(trimmed.substring(idx + 1).trim())
+        }
+        return map
+    }
+
+    private fun unquoteYamlScalar(raw: String): String {
+        if (raw.length >= 2) {
+            val q = raw.first()
+            if ((q == '"' || q == '\'') && raw.last() == q) {
+                val inner = raw.substring(1, raw.length - 1)
+                return if (q == '"') {
+                    inner.replace("\\\"", "\"").replace("\\\\", "\\")
+                } else {
+                    inner.replace("''", "'")
+                }
+            }
+        }
+        return raw
+    }
+
     private fun yamlEscape(value: String): String {
-        return if (value.any { it in ":#{}[],&*?|>!%@`'\"" || it == '\\' }) {
-            "\"${value.replace("\"", "\\\"")}\""
+        return if (value.isEmpty() || value.any { it in ":#{}[],&*?|>!%@`'\"" || it == '\\' || it.isWhitespace() }) {
+            "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
         } else value
     }
 

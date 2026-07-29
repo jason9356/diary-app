@@ -29,7 +29,21 @@ vault/   （Android: filesDir/vault；旧版 diary_data 会自动迁入）
 
 ## 灵感卡片
 
-见 [sync-protocol.md](sync-protocol.md) front matter。路径：`diary/YYYY/MM/<id>.md`。
+Markdown 文件，YAML front matter + 正文。路径：`diary/YYYY/MM/<id>.md`。
+
+```yaml
+---
+date: 2026-07-30
+title: 标题
+id: <uuid>
+created_at: <ISO-8601>
+updated_at: <ISO-8601>
+tags: [灵感, 工作]
+pinned: false
+---
+
+正文（CommonMark）
+```
 
 ## 本机待办 `todos/todos.json`
 

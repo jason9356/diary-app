@@ -17,10 +17,8 @@ class SparkboxRepository(dataRoot: File) {
     }
 
     fun getById(entryId: String): SparkEntry? {
-        for ((id, date) in md.listNoteIds()) {
-            if (id == entryId) return loadEntry(id, date)
-        }
-        return null
+        val date = md.dateForId(entryId) ?: return null
+        return loadEntry(entryId, date)
     }
 
     fun getOrCreate(entryId: String, entryDate: String): SparkEntry {
@@ -108,7 +106,7 @@ class SparkboxRepository(dataRoot: File) {
     fun getDayContext(entryDate: String): DayContext = days.getOrEmpty(entryDate)
 
     fun save(entry: SparkEntry): SparkEntry {
-        val title = extractTitle(entry.body, entry.entryDate)
+        val title = resolveTitle(entry)
         val now = SparkDates.nowIso()
         val id = entry.id.ifBlank { UUID.randomUUID().toString() }
         val created = entry.createdAt.ifBlank { now }
@@ -117,6 +115,7 @@ class SparkboxRepository(dataRoot: File) {
         val updated = if (
             previous != null &&
             previous.body == entry.body &&
+            previous.title == title &&
             previous.tags == tags &&
             previous.pinned == entry.pinned &&
             previous.updatedAt.isNotBlank()
@@ -224,6 +223,12 @@ class SparkboxRepository(dataRoot: File) {
 
     private fun mergeTags(a: List<String>, b: List<String>): List<String> =
         (a + b).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+    private fun resolveTitle(entry: SparkEntry): String {
+        val explicit = entry.title.trim()
+        if (explicit.isNotEmpty() && explicit != entry.entryDate) return explicit.take(120)
+        return extractTitle(entry.body, entry.entryDate)
+    }
 
     private fun extractTitle(body: String, fallback: String): String {
         for (line in body.lineSequence()) {

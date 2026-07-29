@@ -2,6 +2,7 @@ package com.sparkbox.android.data
 
 import java.time.LocalDate
 import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 /** Inspiration card (formerly diary note). Stored as Markdown with UUID id. */
 data class SparkEntry(
@@ -84,7 +85,7 @@ data class NativeTodo(
 object SparkDates {
     fun today(): String = LocalDate.now().toString()
 
-    fun nowIso(): String = OffsetDateTime.now().toString()
+    fun nowIso(): String = OffsetDateTime.now(ZoneOffset.UTC).toString()
 
     fun formatTemp(t: Double): String {
         val s = if (t % 1.0 == 0.0) t.toInt().toString() else t.toString()

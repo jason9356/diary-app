@@ -6,18 +6,21 @@
 
 ### Added
 
-- Android 应用 ID `com.sparkbox.android`；版本名 `1.0.0`；APK 文件名「灵感匣-第一版」
+- Android 应用 ID `com.sparkbox.android`；版本名 `1.0.0`；APK 文件名「灵感匣第一版」
 - Vault 本地目录 `files/vault`（自 `diary_data` 自动迁移）；布局内仍用 `diary/` 路径
 - 数据存放：仅本机 / 云盘（WebDAV）；事项 FAB 新建与增强字段
+- 编辑页：居中标题卡片、分类选择；阅读端 Markdown 标题 / 有序·无序列表
 
 ### Changed
 
 - 工程与代码标识统一为 Sparkbox（去掉 personaldiary / Diary* 主路径命名）
-- 文档以灵感匣为主产品；自建同步与 Obsidian 桥不再作为产品能力
+- 文档以灵感匣为主产品；同步以本机 Vault + WebDAV 为准
+- 深色模式编辑光标跟随主题色
 
 ### Removed
 
 - Android 自建 SyncClient、Obsidian/S3 待办桥
+- 自建 FastAPI 同步服务端（`server/`）与 sync-protocol 文档
 
 ## [Unreleased]
 

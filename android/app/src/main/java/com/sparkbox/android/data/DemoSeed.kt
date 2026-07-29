@@ -11,80 +11,79 @@ object DemoSeed {
         val yesterday = today.minusDays(1)
         val todayStr = today.toString()
         val yesterdayStr = yesterday.toString()
-        val now = SparkDates.nowIso()
 
-        repo.writeDayContext(
-            DayContext(
-                date = todayStr,
-                location = "杭州 · 西湖",
-                weather = "多云",
-                tempC = 28.0,
-                device = DeviceLabels.currentPhone(),
-                contextSource = "phone",
-                contextUpdatedAt = now,
-                updatedAt = now,
-            ),
-        )
-        repo.writeDayContext(
-            DayContext(
-                date = yesterdayStr,
-                location = "上海 · 静安",
-                weather = "小雨",
-                tempC = 24.0,
-                device = "Windows PC",
-                contextSource = "desktop",
-                contextUpdatedAt = now,
-                updatedAt = now,
-            ),
-        )
-
-        fun saveNote(date: String, body: String, createdOffsetMin: Long = 0) {
+        fun saveNote(
+            date: String,
+            title: String,
+            body: String,
+            tags: List<String> = emptyList(),
+            createdOffsetMin: Long = 0,
+        ) {
             val id = UUID.randomUUID().toString()
             val created = java.time.OffsetDateTime.now().minusMinutes(createdOffsetMin).toString()
             repo.save(
                 SparkEntry(
                     id = id,
                     entryDate = date,
-                    title = date,
+                    title = title,
                     body = body.trimIndent(),
                     createdAt = created,
                     updatedAt = created,
+                    tags = tags,
                 ),
             )
         }
 
         saveNote(
             todayStr,
+            "湖边三件小事",
             """
-            傍晚路过湖边，风把柳条掀起来。
+            # 傍晚
 
-            记下三件小事：
+            路过湖边，风把柳条掀起来。
+
+            ## 记下三件小事
+
             1. 把灵感匣编辑页收成**一整块纸面**
             2. 阅读元信息改成地点 / 设备 / 天气三行
             3. 主题恢复四套：青笺、苔墨、匣光、素昼
 
+            - 柳条
+            - 晚风
+            - 纸面
+
             #产品 #今日
             """.trimIndent(),
-            40,
+            tags = listOf("灵感", "今日"),
+            createdOffsetMin = 40,
         )
         saveNote(
             todayStr,
+            "Markdown 草稿",
             """
             ## 一段带 Markdown 的草稿
 
             有时会写 *斜体*，有时 **加粗强调**。
 
+            ### 清单
+
             - 购物：牛奶
-            - 回邮件：待办卡片间距
+            - 回消息：待办卡片间距
+
+            1. 先写标题
+            2. 再选分类
+            3. 最后落正文
 
             也可以夹一句链接文案 [灵感匣](https://example.com)，阅读时只留文字。
 
             #草稿 #markdown
             """.trimIndent(),
-            20,
+            tags = listOf("草稿"),
+            createdOffsetMin = 20,
         )
         saveNote(
             yesterdayStr,
+            "雨前一页",
             """
             昨天在电脑前写完一页，窗外忽然下雨。
 
@@ -92,10 +91,12 @@ object DemoSeed {
 
             #随笔 #桌面
             """.trimIndent(),
-            60 * 20,
+            tags = listOf("随记"),
+            createdOffsetMin = 60 * 20,
         )
         saveNote(
             yesterdayStr,
+            "短记",
             """
             短记：不要再把标签框、工具栏、正文拆成三块了。
 
@@ -103,7 +104,8 @@ object DemoSeed {
 
             #设计
             """.trimIndent(),
-            60 * 18,
+            tags = listOf("生活"),
+            createdOffsetMin = 60 * 18,
         )
 
         listOf(

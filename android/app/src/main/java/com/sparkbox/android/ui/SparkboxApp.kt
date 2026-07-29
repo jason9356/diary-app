@@ -79,8 +79,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -405,13 +407,16 @@ fun SparkboxApp(viewModel: SparkboxViewModel) {
                 if (entry != null && entry.id == id) {
                     NoteEditorScreen(
                         entry = entry,
+                        allTags = state.allTags,
                         syncing = state.syncing,
                         fontSp = state.editorFontSp,
                         onBack = {
                             viewModel.refreshCards()
                             navController.popBackStack()
                         },
+                        onTitleChange = viewModel::onTitleChange,
                         onBodyChange = viewModel::onBodyChange,
+                        onToggleTag = viewModel::toggleTag,
                         onPickImage = { uri, insert ->
                             viewModel.addImage(uri, appendToBody = false, onInserted = insert)
                         },
@@ -641,11 +646,22 @@ private fun InspirationCard(
             .clickable(onClick = onOpen)
             .padding(14.dp),
     ) {
+        Text(
+            noteDisplayTitle(note),
+            style = MaterialTheme.typography.titleMedium,
+            fontFamily = AppFontFamily,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(8.dp))
         CardMarkdownBody(
             markdown = MarkdownImages.stripForDisplay(note.body),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 40.dp, max = 220.dp),
+                .heightIn(min = 28.dp, max = 180.dp),
+            fontSp = 14.5f,
         )
         if (note.imageRels.isNotEmpty()) {
             Spacer(Modifier.height(10.dp))
@@ -735,8 +751,8 @@ private fun CardMarkdownBody(
     fontSp: Float = 16f,
 ) {
     val color = MaterialTheme.colorScheme.onSurface
-    val annotated = remember(markdown, color) {
-        DisplayMarkdown.toAnnotated(markdown, color)
+    val annotated = remember(markdown, color, fontSp) {
+        DisplayMarkdown.toAnnotated(markdown, color, fontSp)
     }
     Text(
         text = annotated,
@@ -772,7 +788,7 @@ private fun NoteReadScreen(
             TopAppBar(
                 title = {
                     Text(
-                        noteDisplayTitle(entry),
+                        formatHeading(entry.entryDate),
                         maxLines = 1,
                         style = MaterialTheme.typography.titleMedium,
                         fontFamily = AppFontFamily,
@@ -826,8 +842,18 @@ private fun NoteReadScreen(
             ) {
                 if (entry.tags.isNotEmpty()) {
                     TagChipRow(entry.tags)
-                    Spacer(Modifier.height(16.dp))
+                    Spacer(Modifier.height(12.dp))
                 }
+                Text(
+                    noteDisplayTitle(entry),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontFamily = AppFontFamily,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(16.dp))
                 CardMarkdownBody(
                     markdown = MarkdownImages.stripForDisplay(entry.body),
                     modifier = Modifier.fillMaxWidth(),
@@ -1327,24 +1353,42 @@ private fun LevelPicker(value: Int, onChange: (Int) -> Unit) {
 @Composable
 private fun NoteEditorScreen(
     entry: SparkEntry,
+    allTags: List<String>,
     syncing: Boolean,
     fontSp: Float,
     onBack: () -> Unit,
+    onTitleChange: (String) -> Unit,
     onBodyChange: (String) -> Unit,
+    onToggleTag: (String) -> Unit,
     onPickImage: (android.net.Uri, (String) -> Unit) -> Unit,
     onSync: () -> Unit,
 ) {
+    var titleDraft by remember(entry.id) {
+        mutableStateOf(
+            entry.title.takeIf { it.isNotBlank() && it != entry.entryDate }.orEmpty(),
+        )
+    }
     var draft by remember(entry.id) {
         mutableStateOf(MarkdownImages.stripForDisplay(entry.body))
     }
     var lastSavedBody by remember(entry.id) { mutableStateOf(entry.body) }
-    val liveTags = remember(draft) { MarkdownImages.extractHashTags(draft) }
+    val cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
+    val categoryChoices = remember(allTags, entry.tags) {
+        (CATEGORY_PRESETS + allTags + entry.tags)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
 
     LaunchedEffect(entry.id, entry.body) {
         if (entry.body != lastSavedBody) {
             draft = MarkdownImages.stripForDisplay(entry.body)
             lastSavedBody = entry.body
         }
+    }
+    LaunchedEffect(entry.id, entry.title) {
+        val next = entry.title.takeIf { it.isNotBlank() && it != entry.entryDate }.orEmpty()
+        if (next != titleDraft) titleDraft = next
     }
 
     LaunchedEffect(draft, entry.id) {
@@ -1427,18 +1471,97 @@ private fun NoteEditorScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 4.dp),
         ) {
             Surface(
                 shape = RoundedCornerShape(18.dp),
                 color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 22.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    BasicTextField(
+                        value = titleDraft,
+                        onValueChange = {
+                            titleDraft = it
+                            onTitleChange(it)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = AppFontFamily,
+                            fontSize = 22.sp,
+                            lineHeight = 30.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            textAlign = TextAlign.Center,
+                        ),
+                        cursorBrush = cursorBrush,
+                        singleLine = true,
+                        decorationBox = { inner ->
+                            Box(
+                                Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                if (titleDraft.isBlank()) {
+                                    Text(
+                                        "标题",
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.45f),
+                                            textAlign = TextAlign.Center,
+                                        ),
+                                        modifier = Modifier.fillMaxWidth(),
+                                        textAlign = TextAlign.Center,
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Text(
+                "分类",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp),
+            )
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                categoryChoices.forEach { tag ->
+                    TagChip(
+                        text = tag,
+                        selected = tag in entry.tags,
+                        onClick = { onToggleTag(tag) },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .heightIn(min = 320.dp),
             ) {
                 Column(
                     Modifier
-                        .fillMaxSize()
+                        .fillMaxWidth()
                         .padding(horizontal = 18.dp, vertical = 16.dp),
                 ) {
                     BasicTextField(
@@ -1446,15 +1569,16 @@ private fun NoteEditorScreen(
                         onValueChange = { draft = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .weight(1f),
+                            .heightIn(min = 280.dp),
                         textStyle = androidx.compose.ui.text.TextStyle(
                             fontFamily = AppFontFamily,
                             fontSize = fontSp.sp,
                             lineHeight = (fontSp * 1.6f).sp,
                             color = MaterialTheme.colorScheme.onSurface,
                         ),
+                        cursorBrush = cursorBrush,
                         decorationBox = { inner ->
-                            Box(Modifier.fillMaxSize()) {
+                            Box(Modifier.fillMaxWidth()) {
                                 if (draft.isBlank()) {
                                     Text(
                                         "正文",
@@ -1469,16 +1593,14 @@ private fun NoteEditorScreen(
                             }
                         },
                     )
-                    if (liveTags.isNotEmpty()) {
-                        Spacer(Modifier.height(12.dp))
-                        TagChipRow(liveTags, compact = true)
-                    }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
+
+private val CATEGORY_PRESETS = listOf("灵感", "工作", "生活", "阅读", "随记")
 
 private fun formatHeading(entryDate: String): String {
     val d = LocalDate.parse(entryDate)

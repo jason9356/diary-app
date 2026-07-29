@@ -230,12 +230,7 @@ class MarkdownStore:
         m = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
         if not m:
             return None
-        data: dict[str, str] = {}
-        for line in m.group(1).splitlines():
-            if ":" not in line:
-                continue
-            k, v = line.split(":", 1)
-            data[k.strip()] = v.strip().strip('"')
+        data = self._parse_yaml_map(m.group(1))
         if not any(k in data for k in ("location", "weather", "temp_c", "context_source")):
             return None
         temp = None
@@ -260,12 +255,7 @@ class MarkdownStore:
         if not m:
             return text, EntryFrontMatter()
         raw, body = m.group(1), m.group(2).lstrip("\n")
-        data: dict[str, str] = {}
-        for line in raw.splitlines():
-            if ":" not in line:
-                continue
-            key, val = line.split(":", 1)
-            data[key.strip()] = val.strip().strip('"')
+        data = self._parse_yaml_map(raw)
         temp: Optional[float] = None
         if data.get("temp_c"):
             try:
@@ -297,6 +287,28 @@ class MarkdownStore:
         return body, fm
 
     @staticmethod
+    def _parse_yaml_map(raw: str) -> dict[str, str]:
+        data: dict[str, str] = {}
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or ":" not in stripped:
+                continue
+            key, val = stripped.split(":", 1)
+            key = key.strip()
+            if not key:
+                continue
+            data[key] = MarkdownStore._unquote_yaml_scalar(val.strip())
+        return data
+
+    @staticmethod
+    def _unquote_yaml_scalar(val: str) -> str:
+        if len(val) >= 2 and val[0] == val[-1] == '"':
+            return val[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        if len(val) >= 2 and val[0] == val[-1] == "'":
+            return val[1:-1].replace("''", "'")
+        return val
+
+    @staticmethod
     def _parse_tags(raw: str) -> list[str]:
         s = (raw or "").strip()
         if not s:
@@ -312,8 +324,8 @@ class MarkdownStore:
 
     @staticmethod
     def _yaml_escape(value: str) -> str:
-        if any(c in value for c in ":#{}[],&*?|>!%@`'\"\\"):
-            escaped = value.replace('"', '\\"')
+        if (not value) or any(c in value for c in ":#{}[],&*?|>!%@`'\"\\") or value.strip() != value:
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
         return value
 

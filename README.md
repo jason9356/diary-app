@@ -5,7 +5,7 @@
 > 产品定位是灵感匣，不是日记替代品。日记请继续用你现有的工具。
 
 当前主客户端：**Android**（[`android/`](./android/)）。  
-桌面 Python/PySide6（[`src/`](./src/)）与旧同步服务（[`server/`](./server/)）为遗留参考，**不是产品主路径**。
+桌面 Python/PySide6（[`src/`](./src/)）为遗留参考，**不是产品主路径**；同步以本机 Vault + 可选 WebDAV 为准。
 
 技术栈：Android Kotlin · Jetpack Compose · 本地 Markdown Vault · 可选 WebDAV。
 
@@ -41,7 +41,6 @@ cd android
 |------|------|
 | [docs/vault-schema.md](./docs/vault-schema.md) | Vault 目录约定 |
 | [docs/android-client.md](./docs/android-client.md) | Android 说明 |
-| [docs/sync-protocol.md](./docs/sync-protocol.md) | 遗留自建同步协议（参考） |
 | [docs/RELEASE.md](./docs/RELEASE.md) | 发布备注 |
 
 ## 许可
