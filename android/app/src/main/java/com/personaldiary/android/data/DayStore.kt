@@ -48,6 +48,7 @@ class DayStore(private val diaryRoot: File) {
                 location = json.optString("location", ""),
                 weather = json.optString("weather", ""),
                 tempC = temp,
+                device = json.optString("device", ""),
                 contextSource = json.optString("context_source", ""),
                 contextUpdatedAt = json.optString("context_updated_at", ""),
                 updatedAt = json.optString("updated_at", ""),
@@ -67,6 +68,7 @@ class DayStore(private val diaryRoot: File) {
             .put("date", ctx.date)
             .put("location", ctx.location)
             .put("weather", ctx.weather)
+            .put("device", ctx.device)
             .put("context_source", ctx.contextSource)
             .put("context_updated_at", ctx.contextUpdatedAt)
             .put("updated_at", ctx.updatedAt.ifBlank { ctx.contextUpdatedAt })

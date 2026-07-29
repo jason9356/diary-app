@@ -7,20 +7,24 @@ import androidx.lifecycle.viewModelScope
 import com.personaldiary.android.DiaryApplication
 import com.personaldiary.android.ai.AiHooks
 import com.personaldiary.android.ai.NoOpAiHooks
-import com.personaldiary.android.data.AppPrefs
 import com.personaldiary.android.data.DayContext
+import com.personaldiary.android.data.DemoSeed
 import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.DiaryRepository
 import com.personaldiary.android.data.NativeTodo
 import com.personaldiary.android.data.NativeTodoStore
 import com.personaldiary.android.data.ObsidianTodo
+import com.personaldiary.android.data.AppPrefs
 import com.personaldiary.android.obsidian.ObsidianTodoExtract
 import com.personaldiary.android.obsidian.S3Config
 import com.personaldiary.android.obsidian.S3ObjectStore
 import com.personaldiary.android.obsidian.TagRule
 import com.personaldiary.android.sync.SyncClient
 import com.personaldiary.android.sync.SyncPrefs
+import com.personaldiary.android.sync.VaultMirror
+import com.personaldiary.android.sync.WebDavClient
+import com.personaldiary.android.sync.WebDavConfig
 import com.personaldiary.android.weather.LocationHelper
 import com.personaldiary.android.weather.PlaceResolver
 import com.personaldiary.android.weather.WeatherService
@@ -56,6 +60,20 @@ data class DiaryUiState(
     val syncEndpoint: String = "",
     val syncToken: String = "",
     val editorFontSp: Float = 17f,
+    /** system | light | dark */
+    val themeMode: String = "system",
+    /** slip | moss | spark | paper */
+    val themePalette: String = "slip",
+    val obsidianTodosEnabled: Boolean = false,
+    val storageTarget: String = "local",
+    val cloudProvider: String = "webdav",
+    val webdavUrl: String = "",
+    val webdavUser: String = "",
+    val webdavPass: String = "",
+    val webdavRoot: String = "/sparkbox",
+    val cloudEndpoint: String = "",
+    val cloudAppKey: String = "",
+    val cloudToken: String = "",
     val aiEnabled: Boolean = false,
     val aiPreview: String = "",
     val s3Endpoint: String = "",
@@ -92,8 +110,16 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        refreshCards()
-        refreshNativeTodos()
+        if (appPrefs.obsidianTodosEnabled) {
+            appPrefs.obsidianTodosEnabled = false
+        }
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                DemoSeed.ensure(repo, todoStore, appPrefs)
+            }
+            refreshCards()
+            refreshNativeTodos()
+        }
     }
 
     private fun loadPrefsState(): DiaryUiState =
@@ -101,6 +127,18 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
             syncEndpoint = syncPrefs.endpoint,
             syncToken = syncPrefs.token,
             editorFontSp = appPrefs.editorFontSp,
+            themeMode = appPrefs.themeMode,
+            themePalette = appPrefs.themePalette,
+            obsidianTodosEnabled = false,
+            storageTarget = appPrefs.storageTarget,
+            cloudProvider = appPrefs.cloudProvider,
+            webdavUrl = appPrefs.webdavUrl,
+            webdavUser = appPrefs.webdavUser,
+            webdavPass = appPrefs.webdavPass,
+            webdavRoot = appPrefs.webdavRoot,
+            cloudEndpoint = appPrefs.cloudEndpoint,
+            cloudAppKey = appPrefs.cloudAppKey,
+            cloudToken = appPrefs.cloudToken,
             aiEnabled = appPrefs.aiEnabled,
             s3Endpoint = appPrefs.s3Endpoint,
             s3Region = appPrefs.s3Region,
@@ -117,17 +155,26 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private fun ai(): AiHooks = NoOpAiHooks(_state.value.aiEnabled)
 
     fun refreshCards() {
-        val notes = repo.listAllNotes()
-        _state.update {
-            it.copy(
-                notes = notes,
-                allTags = repo.allTags(),
-                filteredNotes = applyFilters(notes, it.filterQuery, it.filterDate, it.filterTag),
-            )
+        viewModelScope.launch {
+            val notes = withContext(Dispatchers.IO) { repo.listAllNotes() }
+            _state.update {
+                it.copy(
+                    notes = notes,
+                    allTags = notes.flatMap { n -> n.tags }.distinct().sorted(),
+                    filteredNotes = applyFilters(notes, it.filterQuery, it.filterDate, it.filterTag),
+                )
+            }
         }
     }
 
     fun refreshNotes() = refreshCards()
+
+    fun refreshNativeTodos() {
+        viewModelScope.launch {
+            val list = withContext(Dispatchers.IO) { todoStore.list() }
+            _state.update { it.copy(nativeTodos = list) }
+        }
+    }
 
     fun setFilterQuery(q: String) {
         _state.update {
@@ -176,18 +223,24 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun openNote(entryId: String) {
-        val entry = repo.getById(entryId) ?: return
-        val context = repo.getDayContext(entry.entryDate)
-        _state.update {
-            it.copy(
-                entry = entry,
-                selectedDate = entry.entryDate,
-                dayContext = context,
-                status = "",
-            )
-        }
-        if (entry.entryDate == DiaryDates.today() && !context.hasContext) {
-            captureContextOnce(entry.entryDate)
+        viewModelScope.launch {
+            val loaded = withContext(Dispatchers.IO) {
+                val entry = repo.getById(entryId) ?: return@withContext null
+                val context = repo.getDayContext(entry.entryDate)
+                entry to context
+            } ?: return@launch
+            val (entry, context) = loaded
+            _state.update {
+                it.copy(
+                    entry = entry,
+                    selectedDate = entry.entryDate,
+                    dayContext = context,
+                    status = "",
+                )
+            }
+            if (entry.entryDate == DiaryDates.today() && !context.hasContext) {
+                captureContextOnce(entry.entryDate)
+            }
         }
     }
 
@@ -223,10 +276,12 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun saveNow() {
-        val current = _state.value.entry ?: return
-        val saved = repo.save(current)
-        _state.update { it.copy(entry = saved, status = "") }
-        refreshCards()
+        viewModelScope.launch {
+            val current = _state.value.entry ?: return@launch
+            val saved = withContext(Dispatchers.IO) { repo.save(current) }
+            _state.update { it.copy(entry = saved, status = "") }
+            refreshCards()
+        }
     }
 
     fun saveSyncSettings(endpoint: String, token: String) {
@@ -244,6 +299,28 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     fun setEditorFontSp(sp: Float) {
         appPrefs.editorFontSp = sp
         _state.update { it.copy(editorFontSp = appPrefs.editorFontSp) }
+    }
+
+    fun setThemeMode(mode: String) {
+        appPrefs.themeMode = mode
+        _state.update { it.copy(themeMode = appPrefs.themeMode) }
+    }
+
+    fun setThemePalette(palette: String) {
+        appPrefs.themePalette = palette
+        _state.update { it.copy(themePalette = appPrefs.themePalette) }
+    }
+
+    fun setObsidianTodosEnabled(enabled: Boolean) {
+        appPrefs.obsidianTodosEnabled = enabled
+        _state.update {
+            it.copy(
+                obsidianTodosEnabled = enabled,
+                obsidianTodos = if (enabled) it.obsidianTodos else emptyList(),
+                todoStatus = if (enabled) it.todoStatus else "",
+            )
+        }
+        if (enabled) refreshObsidianTodos()
     }
 
     fun setAiEnabled(enabled: Boolean) {
@@ -296,25 +373,94 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun setStorageTarget(target: String) {
+        appPrefs.storageTarget = target
+        _state.update { it.copy(storageTarget = appPrefs.storageTarget) }
+    }
+
+    fun setCloudProvider(provider: String) {
+        appPrefs.cloudProvider = provider
+        _state.update { it.copy(cloudProvider = appPrefs.cloudProvider) }
+    }
+
+    fun saveWebDavSettings(url: String, user: String, pass: String, root: String) {
+        appPrefs.webdavUrl = url
+        appPrefs.webdavUser = user
+        appPrefs.webdavPass = pass
+        appPrefs.webdavRoot = root
+        _state.update {
+            it.copy(
+                webdavUrl = appPrefs.webdavUrl,
+                webdavUser = appPrefs.webdavUser,
+                webdavPass = appPrefs.webdavPass,
+                webdavRoot = appPrefs.webdavRoot,
+                status = "WebDAV 设置已保存",
+            )
+        }
+    }
+
+    fun saveCloudStubSettings(endpoint: String, appKey: String, token: String) {
+        appPrefs.cloudEndpoint = endpoint
+        appPrefs.cloudAppKey = appKey
+        appPrefs.cloudToken = token
+        _state.update {
+            it.copy(
+                cloudEndpoint = appPrefs.cloudEndpoint,
+                cloudAppKey = appPrefs.cloudAppKey,
+                cloudToken = appPrefs.cloudToken,
+                status = "云盘配置已保存（登录尚未开通）",
+            )
+        }
+    }
+
     fun syncNow(entryDate: String? = null) {
         viewModelScope.launch {
             saveNow()
             val date = entryDate ?: _state.value.selectedDate
             val openId = _state.value.entry?.id
+            val target = appPrefs.storageTarget
             _state.update { it.copy(syncing = true, status = "正在同步…") }
-            val result = withContext(Dispatchers.IO) {
-                val card = syncClient.sync(date)
-                val todos = syncClient.syncTodos(todoStore)
-                card.copy(message = listOf(card.message, todos.message).filter { it.isNotBlank() }.joinToString(" · "))
+            val message = withContext(Dispatchers.IO) {
+                when (target) {
+                    "local" -> "当前为仅本地，无需上行同步"
+                    "sync_server" -> {
+                        val card = syncClient.sync(date)
+                        val todos = syncClient.syncTodos(todoStore)
+                        listOf(card.message, todos.message).filter { it.isNotBlank() }.joinToString(" · ")
+                    }
+                    "cloud" -> when (appPrefs.cloudProvider) {
+                        "webdav" -> {
+                            val cfg = WebDavConfig(
+                                baseUrl = appPrefs.webdavUrl,
+                                username = appPrefs.webdavUser,
+                                password = appPrefs.webdavPass,
+                                rootPath = appPrefs.webdavRoot,
+                            )
+                            if (!cfg.enabled) "请先填写 WebDAV 地址与账号"
+                            else VaultMirror(appCtx.repository.dataRoot, WebDavClient(cfg)).sync().message
+                        }
+                        else -> "${appPrefs.cloudProvider} 尚未接入"
+                    }
+                    else -> "未知存放目标"
+                }
             }
-            _state.update {
-                it.copy(syncing = false, status = result.message)
-            }
+            _state.update { it.copy(syncing = false, status = message) }
             refreshCards()
             refreshNativeTodos()
             openId?.let { openNote(it) }
         }
     }
+
+    fun upsertNativeTodo(todo: NativeTodo) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { todoStore.upsert(todo) }
+            refreshNativeTodos()
+        }
+    }
+
+    fun getNativeTodo(id: String): NativeTodo? =
+        _state.value.nativeTodos.firstOrNull { it.id == id }
+            ?: todoStore.list().firstOrNull { it.id == id }
 
     fun addImage(uri: Uri, appendToBody: Boolean = true, onInserted: (String) -> Unit = {}) {
         viewModelScope.launch {
@@ -336,24 +482,26 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun refreshNativeTodos() {
-        _state.update { it.copy(nativeTodos = todoStore.list()) }
-    }
-
     fun addNativeTodo(text: String) {
         if (text.isBlank()) return
-        todoStore.add(text)
-        refreshNativeTodos()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { todoStore.add(text) }
+            refreshNativeTodos()
+        }
     }
 
     fun setNativeTodoDone(id: String, done: Boolean) {
-        todoStore.setDone(id, done)
-        refreshNativeTodos()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { todoStore.setDone(id, done) }
+            refreshNativeTodos()
+        }
     }
 
     fun deleteNativeTodo(id: String) {
-        todoStore.delete(id)
-        refreshNativeTodos()
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { todoStore.delete(id) }
+            refreshNativeTodos()
+        }
     }
 
     private fun s3Config(): S3Config =
@@ -376,10 +524,24 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshObsidianTodos() {
         viewModelScope.launch {
+            if (!appPrefs.obsidianTodosEnabled) {
+                _state.update {
+                    it.copy(
+                        obsidianTodos = emptyList(),
+                        todosLoading = false,
+                        todoStatus = "",
+                    )
+                }
+                return@launch
+            }
             val cfg = s3Config()
             if (!cfg.enabled) {
                 _state.update {
-                    it.copy(todoStatus = "未配置对象存储", obsidianTodos = emptyList())
+                    it.copy(
+                        todoStatus = "未配置对象存储 · 显示示例待办",
+                        obsidianTodos = DemoSeed.sampleObsidianTodos(),
+                        todosLoading = false,
+                    )
                 }
                 return@launch
             }
@@ -398,9 +560,13 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 _state.update {
                     it.copy(
-                        obsidianTodos = todos,
+                        obsidianTodos = todos.ifEmpty { DemoSeed.sampleObsidianTodos() },
                         todosLoading = false,
-                        todoStatus = "已加载 ${todos.size} 条 Obsidian 待办",
+                        todoStatus = if (todos.isEmpty()) {
+                            "COS 暂无未完成项 · 显示示例"
+                        } else {
+                            "已加载 ${todos.size} 条 Obsidian 待办"
+                        },
                     )
                 }
             } catch (e: Exception) {
@@ -417,9 +583,15 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     fun completeObsidianTodo(todo: ObsidianTodo) {
         viewModelScope.launch {
+            if (!appPrefs.obsidianTodosEnabled) return@launch
             val cfg = s3Config()
             if (!cfg.enabled) {
-                _state.update { it.copy(todoStatus = "未配置对象存储") }
+                _state.update {
+                    it.copy(
+                        obsidianTodos = it.obsidianTodos.filterNot { t -> t.key == todo.key },
+                        todoStatus = "已完成（示例）",
+                    )
+                }
                 return@launch
             }
             _state.update { it.copy(todosLoading = true) }
@@ -442,7 +614,11 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 refreshObsidianTodos()
             } catch (e: Exception) {
                 _state.update {
-                    it.copy(todosLoading = false, todoStatus = "回写失败：${e.message}")
+                    it.copy(
+                        todosLoading = false,
+                        obsidianTodos = it.obsidianTodos.filterNot { t -> t.key == todo.key },
+                        todoStatus = "已完成（本地）",
+                    )
                 }
             }
         }

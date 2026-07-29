@@ -65,8 +65,24 @@ class DiaryRepository(dataRoot: File) {
 
     /** Flat card list for the home screen (pinned first, then newest). */
     fun listAllNotes(): List<DiaryEntry> =
-        md.listNoteIds()
-            .map { (id, date) -> loadEntry(id, date) }
+        md.listParsedNotes()
+            .map { parsed ->
+                val fm = parsed.frontMatter
+                val title = fm.title.ifBlank { extractTitle(parsed.body, parsed.date) }
+                val now = DiaryDates.nowIso()
+                DiaryEntry(
+                    id = fm.id.ifBlank { parsed.id },
+                    entryDate = fm.date.ifBlank { parsed.date },
+                    title = title,
+                    body = parsed.body,
+                    createdAt = fm.createdAt.ifBlank { now },
+                    updatedAt = fm.updatedAt.ifBlank { now },
+                    writingDurationSec = fm.writingDurationSec,
+                    imageRels = assets.listRels(parsed.id),
+                    tags = mergeTags(fm.tags, MarkdownImages.extractHashTags(parsed.body)),
+                    pinned = fm.pinned,
+                )
+            }
             .sortedWith(
                 compareByDescending<DiaryEntry> { it.pinned }
                     .thenByDescending { it.entryDate }
@@ -151,6 +167,7 @@ class DiaryRepository(dataRoot: File) {
                 location = snap.location,
                 weather = snap.weather,
                 tempC = snap.tempC,
+                device = DeviceLabels.currentPhone(),
                 contextSource = "phone",
                 contextUpdatedAt = now,
                 updatedAt = now,
@@ -165,12 +182,15 @@ class DiaryRepository(dataRoot: File) {
             location = payload.optString("location", ""),
             weather = payload.optString("weather", ""),
             tempC = temp,
+            device = payload.optString("device", ""),
             contextSource = payload.optString("context_source", ""),
             contextUpdatedAt = payload.optString("context_updated_at", ""),
             updatedAt = payload.optString("updated_at", ""),
         )
         return days.mergeWrite(incoming)
     }
+
+    fun writeDayContext(ctx: DayContext): DayContext = days.mergeWrite(ctx)
 
     fun saveImage(context: Context, entryId: String, entryDate: String, uri: Uri): String {
         save(getOrCreate(entryId, entryDate))

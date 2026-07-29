@@ -24,22 +24,30 @@ data class DayContext(
     val location: String = "",
     val weather: String = "",
     val tempC: Double? = null,
+    /** Short device label, e.g. OPPO Find X / Windows PC */
+    val device: String = "",
     val contextSource: String = "",
     val contextUpdatedAt: String = "",
     val updatedAt: String = "",
 ) {
     val hasContext: Boolean
-        get() = location.isNotBlank() || weather.isNotBlank() || tempC != null
+        get() = location.isNotBlank() || weather.isNotBlank() || tempC != null || device.isNotBlank()
+
+    fun weatherLine(): String {
+        val wx = weather.trim()
+        return when {
+            tempC != null && wx.isNotEmpty() -> "$wx ${DiaryDates.formatTemp(tempC)}"
+            tempC != null -> DiaryDates.formatTemp(tempC)
+            else -> wx
+        }
+    }
 
     fun contextLine(): String {
         val parts = mutableListOf<String>()
         if (location.isNotBlank()) parts += location
-        val wx = weather.trim()
-        when {
-            tempC != null && wx.isNotEmpty() -> parts += "$wx ${DiaryDates.formatTemp(tempC)}"
-            tempC != null -> parts += DiaryDates.formatTemp(tempC)
-            wx.isNotEmpty() -> parts += wx
-        }
+        val w = weatherLine()
+        if (w.isNotBlank()) parts += w
+        if (device.isNotBlank()) parts += device
         return parts.joinToString(" · ")
     }
 }
@@ -59,7 +67,16 @@ data class TimelineDay(
 data class NativeTodo(
     val id: String,
     val text: String,
+    val detail: String = "",
     val done: Boolean = false,
+    /** task | note | errand | other */
+    val kind: String = "task",
+    /** ISO date or datetime; blank if none */
+    val dueAt: String = "",
+    /** 0 none, 1..3 low/med/high */
+    val priority: Int = 0,
+    /** 0 none, 1..3 low/med/high */
+    val urgency: Int = 0,
     val createdAt: String = DiaryDates.nowIso(),
     val updatedAt: String = DiaryDates.nowIso(),
 )

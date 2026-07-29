@@ -23,8 +23,36 @@
 |------|------|
 | 灵感卡片 | `diary/YYYY/MM/<id>.md`（路径暂沿用；语义为卡片） |
 | 资源 | `assets/<id>/<file>` |
-| 本机待办 | 客户端 `todos/todos.json`；服务端 `todos.json` |
+| 本机待办 | 客户端 `todos/todos.json`；服务端 `todos.json`（文档级 LWW） |
 | 日上下文（遗留） | `diary/YYYY/MM/<date>.day.json` |
+
+统一目录约定见 [vault-schema.md](vault-schema.md)（Vault schema v1）。
+
+### 本机待办文档（增强）
+
+本地与 API 载荷中的 `json` 字段均为同一文档形状：
+
+```json
+{
+  "updated_at": "<ISO>",
+  "items": [
+    {
+      "id": "<uuid>",
+      "text": "标题",
+      "detail": "",
+      "done": false,
+      "kind": "task",
+      "due_at": null,
+      "priority": 0,
+      "urgency": 0,
+      "created_at": "<ISO>",
+      "updated_at": "<ISO>"
+    }
+  ]
+}
+```
+
+`GET/PUT /v1/todos` 仍使用外壳 `{"updated_at","json"}`：`json` 为上述文档的字符串（或对象，服务端规范化）。旧版裸数组客户端读入时迁移。
 
 ### 卡片 front matter
 

@@ -120,7 +120,8 @@ class SyncClient(
         return try {
             checkProtocol()?.let { return SyncResult(message = it) }
             val localRaw = todoStore.readRaw()
-            val localUpdated = todoStore.list().maxOfOrNull { it.updatedAt }.orEmpty()
+            val localUpdated = todoStore.documentUpdatedAt()
+                .ifBlank { todoStore.list().maxOfOrNull { it.updatedAt }.orEmpty() }
             val remote = fetchTodos()
             when {
                 remote == null -> {
@@ -128,7 +129,17 @@ class SyncClient(
                     SyncResult(pushed = 1, message = "待办已上传")
                 }
                 remote.optString("updated_at") > localUpdated -> {
-                    todoStore.writeRaw(remote.optString("json", "[]"))
+                    val payload = remote.opt("json")
+                    val raw = when (payload) {
+                        is String -> payload
+                        is JSONObject -> payload.toString()
+                        is JSONArray -> JSONObject()
+                            .put("updated_at", remote.optString("updated_at"))
+                            .put("items", payload)
+                            .toString()
+                        else -> "[]"
+                    }
+                    todoStore.applyRemote(raw, remote.optString("updated_at"))
                     SyncResult(pulled = 1, message = "待办已拉取")
                 }
                 remote.optString("updated_at") < localUpdated -> {

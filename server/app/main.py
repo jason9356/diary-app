@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse
@@ -115,10 +116,20 @@ def health() -> dict:
 
 
 class TodosPut(BaseModel):
+    """Accepts enhanced Vault todos document (string or object) in `json`."""
+
     updated_at: str = ""
-    items_json: str = Field(default="[]", alias="json")
+    items_json: Any = Field(default="[]", alias="json")
 
     model_config = {"populate_by_name": True}
+
+
+def _todos_json_string(value: Any) -> str:
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, ensure_ascii=False)
+    if value is None:
+        return "[]"
+    return str(value)
 
 
 @app.get("/v1/todos", dependencies=[Depends(require_token)])
@@ -127,15 +138,15 @@ def get_todos() -> dict:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="not found")
     raw = path.read_text(encoding="utf-8")
-    # File format: {"updated_at":"...","json":"[...]"} or bare array (legacy)
+    # File format: {"updated_at":"...","json":"<document or legacy array>"}
+    # Document may be Vault v1 {updated_at, items:[...]} or a bare array.
     try:
-        import json as _json
-
-        obj = _json.loads(raw)
+        obj = json.loads(raw)
         if isinstance(obj, dict) and "json" in obj:
+            inner = obj["json"]
             return {
                 "updated_at": obj.get("updated_at", ""),
-                "json": obj["json"] if isinstance(obj["json"], str) else _json.dumps(obj["json"], ensure_ascii=False),
+                "json": inner if isinstance(inner, str) else json.dumps(inner, ensure_ascii=False),
             }
         return {"updated_at": "", "json": raw}
     except Exception:
@@ -144,15 +155,13 @@ def get_todos() -> dict:
 
 @app.put("/v1/todos", dependencies=[Depends(require_token)])
 def put_todos(body: TodosPut) -> dict:
-    import json as _json
-
     path = store.root / "todos.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "updated_at": body.updated_at,
-        "json": body.items_json,
+        "json": _todos_json_string(body.items_json),
     }
-    path.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return payload
 
 

@@ -98,9 +98,13 @@ class MarkdownStore(
         file.writeText(content, Charsets.UTF_8)
     }
 
-    fun listNoteIds(): List<Pair<String, String>> {
+    fun listNoteIds(): List<Pair<String, String>> =
+        listParsedNotes().map { it.id to it.date }
+
+    /** One filesystem pass: parse each note once (avoids double-read on home refresh). */
+    fun listParsedNotes(): List<ParsedNote> {
         if (!diaryRoot.exists()) return emptyList()
-        val found = mutableListOf<Pair<String, String>>()
+        val found = mutableListOf<ParsedNote>()
         diaryRoot.walkTopDown()
             .filter { it.isFile && it.extension == "md" }
             .forEach { path ->
@@ -108,13 +112,28 @@ class MarkdownStore(
                 val stem = path.nameWithoutExtension
                 if (!UUID_RE.matches(stem)) return@forEach
                 val text = path.readText(Charsets.UTF_8)
-                val (_, fm) = parse(text)
+                val (body, fm) = parse(text)
                 val entryDate = fm.date
                 if (entryDate.isBlank()) return@forEach
-                found += stem to entryDate
+                found += ParsedNote(
+                    id = stem,
+                    date = entryDate,
+                    body = body,
+                    frontMatter = fm.copy(
+                        date = entryDate,
+                        id = fm.id.ifBlank { stem },
+                    ),
+                )
             }
-        return found.sortedByDescending { it.second }
+        return found.sortedByDescending { it.date }
     }
+
+    data class ParsedNote(
+        val id: String,
+        val date: String,
+        val body: String,
+        val frontMatter: FrontMatter,
+    )
 
     fun migrateV1Layout(dayStore: DayStore): Int {
         if (!diaryRoot.exists()) return 0

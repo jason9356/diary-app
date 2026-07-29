@@ -4,11 +4,9 @@ import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,14 +28,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
-import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -46,13 +43,13 @@ import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
-import androidx.compose.material.icons.outlined.FormatBold
-import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
+import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material.icons.outlined.Title
+import androidx.compose.material.icons.outlined.WbCloudy
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -64,8 +61,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -76,15 +72,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,23 +91,16 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
-import com.mohamedrejeb.richeditor.model.RichTextState
-import com.mohamedrejeb.richeditor.model.rememberRichTextState
-import com.mohamedrejeb.richeditor.ui.material3.RichText
-import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.personaldiary.android.data.DayContext
+import com.personaldiary.android.data.DeviceLabels
 import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.MarkdownImages
 import com.personaldiary.android.data.NativeTodo
 import com.personaldiary.android.data.ObsidianTodo
 import com.personaldiary.android.ui.theme.AppFontFamily
-import com.personaldiary.android.ui.theme.DisplayFontFamily
-import com.personaldiary.android.ui.theme.SlipTeal
-import com.personaldiary.android.ui.theme.SparkFieldBrush
-import com.personaldiary.android.ui.theme.SlipField
+import com.personaldiary.android.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.distinctUntilChanged
 import java.io.File
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -125,12 +111,24 @@ import java.util.Locale
 private object Routes {
     const val Home = "home"
     const val Todos = "todos"
+    const val TodoDetail = "todos/detail/{id}"
     const val Settings = "settings"
+    const val SettingsAppearance = "settings/appearance"
+    const val SettingsSync = "settings/sync"
+    const val SettingsStorage = "settings/sync/storage"
+    const val SettingsStorageCloud = "settings/sync/storage/cloud"
+    const val SettingsStorageWebDav = "settings/sync/storage/webdav"
+    const val SettingsStorageStub = "settings/sync/storage/stub"
+    const val SettingsSyncCards = "settings/sync/cards"
+    const val SettingsSyncObsidian = "settings/sync/obsidian"
+    const val SettingsAi = "settings/ai"
+    const val SettingsAbout = "settings/about"
     const val Stats = "stats"
     const val Read = "read/{id}"
     const val Edit = "edit/{id}"
     fun read(id: String) = "read/$id"
     fun edit(id: String) = "edit/$id"
+    fun todoDetail(id: String) = "todos/detail/$id"
 }
 
 @Composable
@@ -165,14 +163,14 @@ fun DiaryApp(viewModel: DiaryViewModel) {
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
-                    containerColor = SlipField.copy(alpha = 0.92f),
+                    containerColor = LocalAppColors.current.field.copy(alpha = 0.94f),
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     tonalElevation = 0.dp,
                 ) {
                     val navColors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = SlipTeal,
-                        selectedTextColor = SlipTeal,
-                        indicatorColor = Color.Transparent,
+                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                        indicatorColor = MaterialTheme.colorScheme.primaryContainer,
                         unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -200,7 +198,7 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                             viewModel.refreshNativeTodos()
                         },
                         icon = { Icon(Icons.Outlined.CheckBox, contentDescription = null) },
-                        label = { Text("待办") },
+                        label = { Text("事项") },
                         colors = navColors,
                     )
                     NavigationBarItem(
@@ -220,7 +218,7 @@ fun DiaryApp(viewModel: DiaryViewModel) {
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().background(SparkFieldBrush)) {
+        Box(Modifier.padding(padding).fillMaxSize().background(LocalAppColors.current.brush())) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.Home,
@@ -266,26 +264,121 @@ fun DiaryApp(viewModel: DiaryViewModel) {
             composable(Routes.Todos) {
                 TodosScreen(
                     nativeTodos = state.nativeTodos,
-                    obsidianTodos = state.obsidianTodos,
-                    loading = state.todosLoading,
-                    status = state.todoStatus,
+                    fontSp = state.editorFontSp,
                     onAdd = viewModel::addNativeTodo,
                     onToggleNative = viewModel::setNativeTodoDone,
-                    onDeleteNative = viewModel::deleteNativeTodo,
-                    onRefreshObsidian = viewModel::refreshObsidianTodos,
-                    onCompleteObsidian = viewModel::completeObsidianTodo,
+                    onOpenNative = { id -> navController.navigate(Routes.todoDetail(id)) },
                 )
             }
+            composable(
+                route = Routes.TodoDetail,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("id").orEmpty()
+                val todo = state.nativeTodos.firstOrNull { it.id == id }
+                    ?: viewModel.getNativeTodo(id)
+                if (todo == null) {
+                    LaunchedEffect(id) { navController.popBackStack() }
+                } else {
+                    TodoDetailScreen(
+                        initial = todo,
+                        onBack = { navController.popBackStack() },
+                        onSave = { saved ->
+                            viewModel.upsertNativeTodo(saved)
+                            navController.popBackStack()
+                        },
+                        onDelete = {
+                            viewModel.deleteNativeTodo(todo.id)
+                            navController.popBackStack()
+                        },
+                    )
+                }
+            }
             composable(Routes.Settings) {
-                SettingsScreen(
+                SettingsHubScreen(
+                    onOpenAppearance = { navController.navigate(Routes.SettingsAppearance) },
+                    onOpenSync = { navController.navigate(Routes.SettingsSync) },
+                    onOpenAi = { navController.navigate(Routes.SettingsAi) },
+                    onOpenAbout = { navController.navigate(Routes.SettingsAbout) },
+                )
+            }
+            composable(Routes.SettingsAppearance) {
+                SettingsAppearanceScreen(
                     state = state,
-                    onSaveSync = viewModel::saveSyncSettings,
+                    onBack = { navController.popBackStack() },
                     onFontChange = viewModel::setEditorFontSp,
+                    onThemeMode = viewModel::setThemeMode,
+                    onThemePalette = viewModel::setThemePalette,
+                )
+            }
+            composable(Routes.SettingsSync) {
+                SettingsSyncHubScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onOpenStorage = { navController.navigate(Routes.SettingsStorage) },
+                    onOpenCards = { navController.navigate(Routes.SettingsSyncCards) },
+                )
+            }
+            composable(Routes.SettingsStorage) {
+                SettingsStorageScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onSelectTarget = viewModel::setStorageTarget,
+                    onOpenServer = { navController.navigate(Routes.SettingsSyncCards) },
+                    onOpenCloud = { navController.navigate(Routes.SettingsStorageCloud) },
                     onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                )
+            }
+            composable(Routes.SettingsStorageCloud) {
+                SettingsCloudProviderScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onSelectProvider = viewModel::setCloudProvider,
+                    onOpenWebDav = { navController.navigate(Routes.SettingsStorageWebDav) },
+                    onOpenStub = { navController.navigate(Routes.SettingsStorageStub) },
+                )
+            }
+            composable(Routes.SettingsStorageWebDav) {
+                SettingsWebDavScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onSave = viewModel::saveWebDavSettings,
+                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                )
+            }
+            composable(Routes.SettingsStorageStub) {
+                SettingsCloudStubScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onSave = viewModel::saveCloudStubSettings,
+                )
+            }
+            composable(Routes.SettingsSyncCards) {
+                SettingsSyncCardsScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onSaveSync = viewModel::saveSyncSettings,
+                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                )
+            }
+            composable(Routes.SettingsSyncObsidian) {
+                SettingsSyncObsidianScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
+                    onEnabledChange = viewModel::setObsidianTodosEnabled,
                     onSaveObsidian = viewModel::saveObsidianSettings,
+                )
+            }
+            composable(Routes.SettingsAi) {
+                SettingsAiScreen(
+                    state = state,
+                    onBack = { navController.popBackStack() },
                     onAiEnabled = viewModel::setAiEnabled,
                     onAiPreview = viewModel::runAiDigestPreview,
                 )
+            }
+            composable(Routes.SettingsAbout) {
+                SettingsAboutScreen(onBack = { navController.popBackStack() })
             }
             composable(
                 route = Routes.Read,
@@ -327,7 +420,6 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                             navController.popBackStack()
                         },
                         onBodyChange = viewModel::onBodyChange,
-                        onTagsChange = viewModel::onTagsChange,
                         onPickImage = { uri, insert ->
                             viewModel.addImage(uri, appendToBody = false, onInserted = insert)
                         },
@@ -336,6 +428,45 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                 }
             }
         }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MainTabTopBar(
+    title: String,
+    actions: @Composable RowScope.() -> Unit = {},
+) {
+    TopAppBar(
+        title = {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleLarge,
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 28.sp,
+            )
+        },
+        actions = actions,
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+        ),
+    )
+}
+
+@Composable
+private fun TabActionIcon(
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    content: @Composable () -> Unit,
+) {
+    IconButton(onClick = onClick, enabled = enabled, modifier = Modifier.size(48.dp)) {
+        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+            content()
         }
     }
 }
@@ -364,39 +495,27 @@ private fun HomeScreen(
         animationSpec = tween(120),
         label = "fabScale",
     )
-    val density = LocalDensity.current
 
     Scaffold(
         containerColor = Color.Transparent,
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "灵感匣",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontFamily = AppFontFamily,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 28.sp,
-                    )
-                },
+            MainTabTopBar(
+                title = "灵感匣",
                 actions = {
-                    IconButton(onClick = onOpenStats) {
-                        Icon(Icons.Outlined.BarChart, contentDescription = "统计")
+                    TabActionIcon(onClick = onOpenStats) {
+                        Icon(Icons.Outlined.BarChart, contentDescription = "统计", modifier = Modifier.size(24.dp))
                     }
-                    IconButton(onClick = onSync, enabled = !syncing) {
+                    TabActionIcon(onClick = onSync, enabled = !syncing) {
                         if (syncing) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(22.dp),
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Icon(Icons.Outlined.CloudSync, contentDescription = "同步")
+                            Icon(Icons.Outlined.CloudSync, contentDescription = "同步", modifier = Modifier.size(24.dp))
                         }
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                ),
             )
         },
         floatingActionButton = {
@@ -404,8 +523,8 @@ private fun HomeScreen(
                 onClick = onNew,
                 modifier = Modifier.scale(fabScale),
                 interactionSource = fabInteraction,
-                containerColor = SlipTeal,
-                contentColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
             ) {
                 Icon(Icons.Filled.Add, contentDescription = "新建灵感")
             }
@@ -420,15 +539,20 @@ private fun HomeScreen(
             OutlinedTextField(
                 value = filterQuery,
                 onValueChange = onQuery,
-                placeholder = { Text("搜索灵感") },
+                placeholder = { Text("搜索") },
                 singleLine = true,
                 shape = RoundedCornerShape(12.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = MaterialTheme.colorScheme.surface,
                     unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
                     focusedBorderColor = MaterialTheme.colorScheme.outline,
                     unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    cursorColor = SlipTeal,
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
                 ),
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -440,9 +564,8 @@ private fun HomeScreen(
             if (notes.isEmpty()) {
                 Text(
                     when {
-                        filterQuery.isNotBlank() || filterTag.isNotBlank() ->
-                            "没有符合条件的灵感。"
-                        else -> "还没有灵感，点右下角 + 记下第一条。"
+                        filterQuery.isNotBlank() || filterTag.isNotBlank() -> "无匹配结果"
+                        else -> "暂无灵感"
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = 4.dp),
@@ -453,21 +576,11 @@ private fun HomeScreen(
                     modifier = Modifier.fillMaxSize(),
                 ) {
                     items(notes, key = { it.id }) { note ->
-                        val itemVisible = remember { mutableStateOf(false) }
-                        LaunchedEffect(note.id) { itemVisible.value = true }
-                        AnimatedVisibility(
-                            visible = itemVisible.value,
-                            enter = fadeIn(tween(220)) + slideInVertically(
-                                animationSpec = tween(220),
-                                initialOffsetY = { with(density) { 8.dp.roundToPx() } },
-                            ),
-                        ) {
-                            InspirationCard(
-                                note = note,
-                                resolveAsset = resolveAsset,
-                                onOpen = { onOpenRead(note.id) },
-                            )
-                        }
+                        InspirationCard(
+                            note = note,
+                            resolveAsset = resolveAsset,
+                            onOpen = { onOpenRead(note.id) },
+                        )
                     }
                     item { Spacer(Modifier.height(72.dp)) }
                 }
@@ -530,7 +643,6 @@ private fun InspirationCard(
     Column(
         Modifier
             .fillMaxWidth()
-            .shadow(1.dp, shape, clip = false)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.outline, shape)
@@ -630,18 +742,18 @@ private fun CardMarkdownBody(
     modifier: Modifier = Modifier,
     fontSp: Float = 16f,
 ) {
-    val state = rememberRichTextState()
-    LaunchedEffect(markdown) {
-        state.setMarkdown(markdown.ifBlank { "（空）" })
+    val color = MaterialTheme.colorScheme.onSurface
+    val annotated = remember(markdown, color) {
+        DisplayMarkdown.toAnnotated(markdown, color)
     }
-    RichText(
-        state = state,
+    Text(
+        text = annotated,
         modifier = modifier,
         style = MaterialTheme.typography.bodyLarge.copy(
             fontFamily = AppFontFamily,
             fontSize = fontSp.sp,
-            color = MaterialTheme.colorScheme.onSurface,
-            lineHeight = (fontSp * 1.5f).sp,
+            color = color,
+            lineHeight = (fontSp * 1.55f).sp,
         ),
     )
 }
@@ -671,24 +783,36 @@ private fun NoteReadScreen(
                         noteDisplayTitle(entry),
                         maxLines = 1,
                         style = MaterialTheme.typography.titleMedium,
-                        fontFamily = DisplayFontFamily,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    TabActionIcon(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { imageLauncher.launch("image/*") }) {
-                        Icon(Icons.Outlined.AddPhotoAlternate, contentDescription = "添加图片")
+                    TabActionIcon(onClick = { imageLauncher.launch("image/*") }) {
+                        Icon(
+                            Icons.Outlined.AddPhotoAlternate,
+                            contentDescription = "添加图片",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
-                    IconButton(onClick = onEdit) {
-                        Icon(Icons.Outlined.Edit, contentDescription = "编辑")
+                    TabActionIcon(onClick = onEdit) {
+                        Icon(Icons.Outlined.Edit, contentDescription = "编辑", modifier = Modifier.size(24.dp))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
         },
@@ -722,17 +846,9 @@ private fun NoteReadScreen(
                     ImageFullColumn(rels = entry.imageRels, resolveAsset = resolveAsset)
                 }
                 Spacer(Modifier.height(28.dp))
-                Text(
-                    buildReadMeta(
-                        timeText = formatDateTime(entry.createdAt.ifBlank { entry.updatedAt }),
-                        placeText = when {
-                            weatherLoading && !context.hasContext -> null
-                            context.location.isNotBlank() -> context.location
-                            else -> null
-                        },
-                    ),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                ReadContextBlock(
+                    context = context,
+                    weatherLoading = weatherLoading,
                 )
                 Spacer(Modifier.height(32.dp))
             }
@@ -740,9 +856,53 @@ private fun NoteReadScreen(
     }
 }
 
-private fun buildReadMeta(timeText: String, placeText: String?): String =
-    listOfNotNull(timeText.takeIf { it.isNotBlank() && it != "—" }, placeText)
-        .joinToString("  ·  ")
+@Composable
+private fun ReadContextBlock(
+    context: DayContext,
+    weatherLoading: Boolean,
+) {
+    val place = DeviceLabels.shorten(context.location, 22)
+        .ifBlank { if (weatherLoading) "定位中…" else "" }
+    val device = DeviceLabels.shorten(context.device, 18)
+    val weather = DeviceLabels.shorten(context.weatherLine(), 20)
+
+    val rows = listOfNotNull(
+        place.takeIf { it.isNotBlank() }?.let { Icons.Outlined.LocationOn to it },
+        device.takeIf { it.isNotBlank() }?.let { Icons.Outlined.PhoneAndroid to it },
+        weather.takeIf { it.isNotBlank() }?.let { Icons.Outlined.WbCloudy to it },
+    )
+    if (rows.isEmpty() && !weatherLoading) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        rows.forEach { (icon, text) ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                    modifier = Modifier.size(16.dp),
+                )
+                Text(
+                    text,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.78f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (rows.isEmpty() && weatherLoading) {
+            Text(
+                "正在获取地点与天气…",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            )
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -767,18 +927,25 @@ private fun StatsScreen(
                 title = {
                     Text(
                         "统计",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontFamily = DisplayFontFamily,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    TabActionIcon(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
         },
@@ -796,7 +963,7 @@ private fun StatsScreen(
                 style = MaterialTheme.typography.displayLarge,
                 fontFamily = AppFontFamily,
                 fontWeight = FontWeight.ExtraBold,
-                color = SlipTeal,
+                color = MaterialTheme.colorScheme.primary,
             )
             Text("灵感卡片", style = MaterialTheme.typography.titleMedium)
             Text(
@@ -805,18 +972,9 @@ private fun StatsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(8.dp))
-            Text(
-                "高频标签",
-                style = MaterialTheme.typography.titleMedium,
-                color = SlipTeal,
-            )
-            Text(
-                "点选标签回到灵感屏筛选；再点可清除。",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Text("高频标签", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
             if (tagFreq.isEmpty()) {
-                Text("还没有标签", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("暂无标签", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     tagFreq.forEach { (tag, count) ->
@@ -855,119 +1013,142 @@ private fun StatsScreen(
     }
 }
 
+private fun todoKindLabel(kind: String): String = when (kind) {
+    "note" -> "备忘"
+    "errand" -> "外出"
+    "other" -> "其他"
+    else -> "事项"
+}
+
+private fun levelLabel(level: Int): String = when (level) {
+    1 -> "低"
+    2 -> "中"
+    3 -> "高"
+    else -> ""
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun TodosScreen(
     nativeTodos: List<NativeTodo>,
-    obsidianTodos: List<ObsidianTodo>,
-    loading: Boolean,
-    status: String,
+    fontSp: Float,
     onAdd: (String) -> Unit,
     onToggleNative: (String, Boolean) -> Unit,
-    onDeleteNative: (String) -> Unit,
-    onRefreshObsidian: () -> Unit,
-    onCompleteObsidian: (ObsidianTodo) -> Unit,
+    onOpenNative: (String) -> Unit,
 ) {
     var draft by remember { mutableStateOf("") }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .padding(20.dp),
-    ) {
-        Text(
-            "待办",
-            style = MaterialTheme.typography.headlineMedium,
-            fontFamily = DisplayFontFamily,
-            fontWeight = FontWeight.Bold,
-        )
-        Spacer(Modifier.height(12.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { draft = it },
-                placeholder = { Text("新待办") },
-                singleLine = true,
-                modifier = Modifier.weight(1f),
-            )
-            TextButton(onClick = {
-                onAdd(draft)
-                draft = ""
-            }) { Text("添加") }
-        }
-        if (status.isNotBlank()) {
-            Text(
-                status,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 8.dp),
-            )
-        }
-        LazyColumn(Modifier.padding(top = 12.dp)) {
-            item {
-                Text("本机", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.height(6.dp))
+    val openCount = nativeTodos.count { !it.done }
+    Scaffold(
+        containerColor = Color.Transparent,
+        topBar = { MainTabTopBar(title = "事项") },
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 16.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = draft,
+                    onValueChange = { draft = it },
+                    placeholder = { Text("添加事项") },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.weight(1f),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        cursorColor = MaterialTheme.colorScheme.primary,
+                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        focusedBorderColor = MaterialTheme.colorScheme.outline,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+                    ),
+                )
+                TextButton(onClick = {
+                    onAdd(draft)
+                    draft = ""
+                }) { Text("添加") }
             }
-            items(nativeTodos, key = { it.id }) { todo ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    IconButton(onClick = { onToggleNative(todo.id, !todo.done) }) {
-                        Icon(
-                            if (todo.done) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
-                            contentDescription = null,
-                        )
-                    }
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                item {
                     Text(
-                        todo.text,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
-                    IconButton(onClick = { onDeleteNative(todo.id) }) {
-                        Icon(Icons.Outlined.Delete, contentDescription = "删除")
-                    }
-                }
-            }
-            item {
-                Spacer(Modifier.height(16.dp))
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        "Obsidian 日记",
+                        if (openCount > 0) "未完成 $openCount" else "全部",
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
-                    IconButton(onClick = onRefreshObsidian, enabled = !loading) {
-                        if (loading) {
-                            androidx.compose.material3.CircularProgressIndicator(
-                                Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else {
-                            Icon(Icons.Outlined.Refresh, contentDescription = "刷新")
+                }
+                if (nativeTodos.isEmpty()) {
+                    item {
+                        Text(
+                            "暂无事项",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                items(nativeTodos, key = { it.id }) { todo ->
+                    val tags = buildList {
+                        if (todo.kind != "task") add(todoKindLabel(todo.kind))
+                        if (todo.priority > 0) add("优${levelLabel(todo.priority)}")
+                        if (todo.urgency > 0) add("急${levelLabel(todo.urgency)}")
+                        if (todo.dueAt.isNotBlank()) add(todo.dueAt.take(10))
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onOpenNative(todo.id) },
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            IconButton(onClick = { onToggleNative(todo.id, !todo.done) }) {
+                                Icon(
+                                    if (todo.done) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp),
+                                )
+                            }
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    todo.text,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontSize = fontSp.sp,
+                                        lineHeight = (fontSp * 1.45f).sp,
+                                        color = if (todo.done) {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurface
+                                        },
+                                    ),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                if (tags.isNotEmpty()) {
+                                    Text(
+                                        tags.joinToString(" · "),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-                Spacer(Modifier.height(6.dp))
-            }
-            items(obsidianTodos, key = { it.key }) { todo ->
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                ) {
-                    Text(todo.content, style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "${todo.tagInner} · ${todo.filePath}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(onClick = { onCompleteObsidian(todo) }) { Text("完成") }
-                }
+                item { Spacer(Modifier.height(24.dp)) }
             }
         }
     }
@@ -975,127 +1156,247 @@ private fun TodosScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SettingsScreen(
-    state: DiaryUiState,
-    onSaveSync: (String, String) -> Unit,
-    onFontChange: (Float) -> Unit,
-    onSyncNow: () -> Unit,
-    onSaveObsidian: (
-        String, String, String, String, String, String, String, String, String, String,
-    ) -> Unit,
-    onAiEnabled: (Boolean) -> Unit,
-    onAiPreview: () -> Unit,
+private fun TodoDetailScreen(
+    initial: NativeTodo,
+    onBack: () -> Unit,
+    onSave: (NativeTodo) -> Unit,
+    onDelete: () -> Unit,
 ) {
-    var ep by remember(state.syncEndpoint) { mutableStateOf(state.syncEndpoint) }
-    var tok by remember(state.syncToken) { mutableStateOf(state.syncToken) }
-    var font by remember(state.editorFontSp) { mutableStateOf(state.editorFontSp) }
-    var s3Ep by remember(state.s3Endpoint) { mutableStateOf(state.s3Endpoint) }
-    var s3Region by remember(state.s3Region) { mutableStateOf(state.s3Region) }
-    var s3Bucket by remember(state.s3Bucket) { mutableStateOf(state.s3Bucket) }
-    var s3Ak by remember(state.s3AccessKey) { mutableStateOf(state.s3AccessKey) }
-    var s3Sk by remember(state.s3SecretKey) { mutableStateOf(state.s3SecretKey) }
-    var s3Prefix by remember(state.s3Prefix) { mutableStateOf(state.s3Prefix) }
-    var diaryFolder by remember(state.obsidianDiaryFolder) { mutableStateOf(state.obsidianDiaryFolder) }
-    var tagOpen by remember(state.tagOpen) { mutableStateOf(state.tagOpen) }
-    var tagClose by remember(state.tagClose) { mutableStateOf(state.tagClose) }
-    var completed by remember(state.completedLabel) { mutableStateOf(state.completedLabel) }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Text(
-            "设置",
-            style = MaterialTheme.typography.headlineMedium,
-            fontFamily = DisplayFontFamily,
-            fontWeight = FontWeight.Bold,
-        )
-
-        Text("书写", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Text("正文字号 ${font.toInt()} sp")
-        Slider(
-            value = font,
-            onValueChange = {
-                font = it
-                onFontChange(it)
-            },
-            valueRange = 14f..24f,
-            steps = 9,
-        )
-
-        Text("同步", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        OutlinedTextField(
-            value = ep,
-            onValueChange = { ep = it },
-            label = { Text("服务地址") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        OutlinedTextField(
-            value = tok,
-            onValueChange = { tok = it },
-            label = { Text("Token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { onSaveSync(ep, tok) }) { Text("保存") }
-            TextButton(onClick = onSyncNow, enabled = !state.syncing) {
-                Text(if (state.syncing) "同步中…" else "立即同步")
+    var text by remember(initial.id) { mutableStateOf(initial.text) }
+    var detail by remember(initial.id) { mutableStateOf(initial.detail) }
+    var kind by remember(initial.id) { mutableStateOf(initial.kind.ifBlank { "task" }) }
+    var dueAt by remember(initial.id) { mutableStateOf(initial.dueAt) }
+    var priority by remember(initial.id) { mutableStateOf(initial.priority) }
+    var urgency by remember(initial.id) { mutableStateOf(initial.urgency) }
+    var done by remember(initial.id) { mutableStateOf(initial.done) }
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = MaterialTheme.colorScheme.surface,
+        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+        cursorColor = MaterialTheme.colorScheme.primary,
+        focusedBorderColor = MaterialTheme.colorScheme.outline,
+        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
+        focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Scaffold(
+        containerColor = Color.Transparent,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "事项",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
+                navigationIcon = {
+                    TabActionIcon(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
+                },
+                actions = {
+                    TextButton(onClick = onDelete) { Text("删除") }
+                    TextButton(
+                        onClick = {
+                            if (text.isBlank()) return@TextButton
+                            onSave(
+                                initial.copy(
+                                    text = text.trim(),
+                                    detail = detail.trim(),
+                                    kind = kind,
+                                    dueAt = dueAt.trim(),
+                                    priority = priority,
+                                    urgency = urgency,
+                                    done = done,
+                                ),
+                            )
+                        },
+                    ) { Text("保存") }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface,
+                ),
+            )
+        },
+    ) { padding ->
+        Column(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("标题") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors,
+            )
+            OutlinedTextField(
+                value = detail,
+                onValueChange = { detail = it },
+                label = { Text("详情") },
+                minLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors,
+            )
+            Text("类型", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Row(
+                Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf("task" to "事项", "note" to "备忘", "errand" to "外出", "other" to "其他").forEach { (id, label) ->
+                    Surface(
+                        onClick = { kind = id },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (kind == id) {
+                            MaterialTheme.colorScheme.primaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.surface
+                        },
+                    ) {
+                        Text(
+                            label,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = dueAt,
+                onValueChange = { dueAt = it },
+                label = { Text("到期") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                colors = fieldColors,
+            )
+            Text("优先级", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            LevelPicker(value = priority, onChange = { priority = it })
+            Text("紧急程度", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            LevelPicker(value = urgency, onChange = { urgency = it })
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { done = !done }
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (done) Icons.Outlined.CheckBox else Icons.Outlined.CheckBoxOutlineBlank,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    if (done) "已完成" else "未完成",
+                    modifier = Modifier.padding(start = 8.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
             }
         }
-        if (state.status.isNotBlank()) {
-            Text(state.status, style = MaterialTheme.typography.labelMedium)
-        }
-
-        Text("Obsidian / 对象存储", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        OutlinedTextField(value = s3Ep, onValueChange = { s3Ep = it }, label = { Text("S3 Endpoint") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = s3Region, onValueChange = { s3Region = it }, label = { Text("Region") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = s3Bucket, onValueChange = { s3Bucket = it }, label = { Text("Bucket") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = s3Ak, onValueChange = { s3Ak = it }, label = { Text("Access Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = s3Sk, onValueChange = { s3Sk = it }, label = { Text("Secret Key") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = s3Prefix, onValueChange = { s3Prefix = it }, label = { Text("Prefix") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        OutlinedTextField(value = diaryFolder, onValueChange = { diaryFolder = it }, label = { Text("日记文件夹") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = tagOpen, onValueChange = { tagOpen = it }, label = { Text("开") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(value = tagClose, onValueChange = { tagClose = it }, label = { Text("闭") }, modifier = Modifier.weight(1f))
-            OutlinedTextField(value = completed, onValueChange = { completed = it }, label = { Text("完成文案") }, modifier = Modifier.weight(1.4f))
-        }
-        TextButton(onClick = {
-            onSaveObsidian(s3Ep, s3Region, s3Bucket, s3Ak, s3Sk, s3Prefix, diaryFolder, tagOpen, tagClose, completed)
-        }) { Text("保存 Obsidian 设置") }
-
-        Text("洞察 / AI", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("启用 AI 接口（预留）")
-            Switch(checked = state.aiEnabled, onCheckedChange = onAiEnabled)
-        }
-        TextButton(onClick = onAiPreview) {
-            Icon(Icons.Outlined.AutoAwesome, contentDescription = null)
-            Spacer(Modifier.size(6.dp))
-            Text("预览今日日报钩子")
-        }
-        if (state.aiPreview.isNotBlank()) {
-            Text(state.aiPreview, style = MaterialTheme.typography.bodyMedium)
-        }
-
-        Text("关于", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
-        Text(
-            "灵感匣 · 本地优先的灵感收集器。\n卡片可同步；待办可自建，也可从 Obsidian 日记经对象存储读写。",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@Composable
+private fun LevelPicker(value: Int, onChange: (Int) -> Unit) {
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        listOf(0 to "无", 1 to "低", 2 to "中", 3 to "高").forEach { (level, label) ->
+            Surface(
+                onClick = { onChange(level) },
+                shape = RoundedCornerShape(10.dp),
+                color = if (value == level) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+            ) {
+                Text(
+                    label,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ObsidianTodoCard(
+    todo: ObsidianTodo,
+    fontSp: Float,
+    onComplete: () -> Unit,
+) {
+    val fileName = remember(todo.filePath) {
+        todo.filePath.substringAfterLast('/').ifBlank { todo.filePath }
+    }
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        todo.tagInner.ifBlank { "待办" },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Text(
+                    fileName,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            CardMarkdownBody(
+                markdown = todo.content,
+                fontSp = fontSp,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onComplete) { Text("完成") }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NoteEditorScreen(
     entry: DiaryEntry,
@@ -1103,39 +1404,28 @@ private fun NoteEditorScreen(
     fontSp: Float,
     onBack: () -> Unit,
     onBodyChange: (String) -> Unit,
-    onTagsChange: (String) -> Unit,
     onPickImage: (android.net.Uri, (String) -> Unit) -> Unit,
     onSync: () -> Unit,
 ) {
-    val richTextState = rememberRichTextState()
-    var loadedEntryId by remember { mutableStateOf<String?>(null) }
-    var tagsText by remember(entry.id) { mutableStateOf(entry.tags.joinToString(", ")) }
-    val bringIntoViewRequester = remember { BringIntoViewRequester() }
-    val scrollState = rememberScrollState()
+    var draft by remember(entry.id) {
+        mutableStateOf(MarkdownImages.stripForDisplay(entry.body))
+    }
+    var lastSavedBody by remember(entry.id) { mutableStateOf(entry.body) }
+    val liveTags = remember(draft) { MarkdownImages.extractHashTags(draft) }
 
-    LaunchedEffect(entry.id) {
-        richTextState.setMarkdown(MarkdownImages.stripForDisplay(entry.body))
-        loadedEntryId = entry.id
-        tagsText = entry.tags.joinToString(", ")
+    LaunchedEffect(entry.id, entry.body) {
+        if (entry.body != lastSavedBody) {
+            draft = MarkdownImages.stripForDisplay(entry.body)
+            lastSavedBody = entry.body
+        }
     }
 
-    LaunchedEffect(richTextState, loadedEntryId, entry.id, entry.body) {
-        snapshotFlow { richTextState.toMarkdown() }
-            .distinctUntilChanged()
-            .collect { md ->
-                if (loadedEntryId == entry.id) {
-                    val merged = MarkdownImages.mergeEditorText(md, entry.body)
-                    if (merged != entry.body) {
-                        delay(500)
-                        onBodyChange(merged)
-                    }
-                }
-            }
-    }
-
-    LaunchedEffect(richTextState.selection, loadedEntryId, entry.id) {
-        if (loadedEntryId == entry.id) {
-            bringIntoViewRequester.bringIntoView()
+    LaunchedEffect(draft, entry.id) {
+        delay(450)
+        val merged = MarkdownImages.mergeEditorText(draft, entry.body)
+        if (merged != entry.body) {
+            lastSavedBody = merged
+            onBodyChange(merged)
         }
     }
 
@@ -1144,10 +1434,9 @@ private fun NoteEditorScreen(
     ) { uri ->
         if (uri != null) {
             onPickImage(uri) { rel ->
-                val text = MarkdownImages.mergeEditorText(richTextState.toMarkdown(), entry.body)
-                val withImg = text.trimEnd() + "\n\n![image]($rel)\n"
-                onBodyChange(withImg)
-                richTextState.setMarkdown(MarkdownImages.stripForDisplay(withImg))
+                val withImg = draft.trimEnd() + "\n\n![image]($rel)\n"
+                draft = MarkdownImages.stripForDisplay(withImg)
+                onBodyChange(MarkdownImages.mergeEditorText(draft, entry.body))
             }
         }
     }
@@ -1158,33 +1447,50 @@ private fun NoteEditorScreen(
             TopAppBar(
                 title = {
                     Text(
-                        noteDisplayTitle(entry),
+                        formatHeading(entry.entryDate),
                         maxLines = 1,
-                        fontFamily = DisplayFontFamily,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontFamily = AppFontFamily,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "返回")
+                    TabActionIcon(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Outlined.ArrowBack,
+                            contentDescription = "返回",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = { imageLauncher.launch("image/*") }) {
-                        Icon(Icons.Outlined.Image, contentDescription = "插入图片")
+                    TabActionIcon(onClick = { imageLauncher.launch("image/*") }) {
+                        Icon(
+                            Icons.Outlined.AddPhotoAlternate,
+                            contentDescription = "插入图片",
+                            modifier = Modifier.size(24.dp),
+                        )
                     }
-                    IconButton(onClick = onSync, enabled = !syncing) {
+                    TabActionIcon(onClick = onSync, enabled = !syncing) {
                         if (syncing) {
                             androidx.compose.material3.CircularProgressIndicator(
                                 modifier = Modifier.size(22.dp),
                                 strokeWidth = 2.dp,
                             )
                         } else {
-                            Icon(Icons.Outlined.CloudSync, contentDescription = "同步")
+                            Icon(
+                                Icons.Outlined.CloudSync,
+                                contentDescription = "同步",
+                                modifier = Modifier.size(24.dp),
+                            )
                         }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface,
                 ),
             )
         },
@@ -1194,95 +1500,55 @@ private fun NoteEditorScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .imePadding()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 4.dp),
         ) {
-            Text(
-                formatHeading(entry.entryDate),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(8.dp))
-            OutlinedTextField(
-                value = tagsText,
-                onValueChange = {
-                    tagsText = it
-                    onTagsChange(it)
-                },
-                label = { Text("标签（逗号分隔，也可在正文写 #标签）") },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    cursorColor = SlipTeal,
-                ),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(8.dp))
-            MarkdownToolbar(state = richTextState)
-            Spacer(Modifier.height(6.dp))
-            Box(
-                Modifier
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(MaterialTheme.colorScheme.surface)
-                    .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-                    .padding(12.dp),
+                    .weight(1f),
             ) {
-                RichTextEditor(
-                    state = richTextState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .bringIntoViewRequester(bringIntoViewRequester),
-                    textStyle = androidx.compose.ui.text.TextStyle(
-                        fontFamily = AppFontFamily,
-                        fontSize = fontSp.sp,
-                        lineHeight = (fontSp * 1.55f).sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                    ),
-                    colors = com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults.richTextEditorColors(
-                        cursorColor = SlipTeal,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                    ),
-                )
+                Column(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 18.dp, vertical = 16.dp),
+                ) {
+                    BasicTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        textStyle = androidx.compose.ui.text.TextStyle(
+                            fontFamily = AppFontFamily,
+                            fontSize = fontSp.sp,
+                            lineHeight = (fontSp * 1.6f).sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        decorationBox = { inner ->
+                            Box(Modifier.fillMaxSize()) {
+                                if (draft.isBlank()) {
+                                    Text(
+                                        "正文",
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontSize = fontSp.sp,
+                                            lineHeight = (fontSp * 1.6f).sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                                        ),
+                                    )
+                                }
+                                inner()
+                            }
+                        },
+                    )
+                    if (liveTags.isNotEmpty()) {
+                        Spacer(Modifier.height(12.dp))
+                        TagChipRow(liveTags, compact = true)
+                    }
+                }
             }
-        }
-    }
-}
-
-@Composable
-private fun MarkdownToolbar(state: RichTextState) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        IconButton(onClick = { state.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) }) {
-            Icon(Icons.Outlined.FormatBold, contentDescription = "加粗")
-        }
-        IconButton(onClick = {
-            state.toggleSpanStyle(
-                androidx.compose.ui.text.SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
-            )
-        }) {
-            Icon(Icons.Outlined.FormatItalic, contentDescription = "斜体")
-        }
-        IconButton(onClick = {
-            val md = state.toMarkdown().trimEnd() + "\n\n## "
-            state.setMarkdown(md)
-        }) {
-            Icon(Icons.Outlined.Title, contentDescription = "标题")
-        }
-        IconButton(onClick = {
-            val md = state.toMarkdown().trimEnd() + "\n- "
-            state.setMarkdown(md)
-        }) {
-            Icon(Icons.AutoMirrored.Outlined.FormatListBulleted, contentDescription = "列表")
+            Spacer(Modifier.height(8.dp))
         }
     }
 }
