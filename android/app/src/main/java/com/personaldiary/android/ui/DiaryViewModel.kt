@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.personaldiary.android.DiaryApplication
+import com.personaldiary.android.data.AppPrefs
 import com.personaldiary.android.data.DayContext
 import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
@@ -38,6 +39,7 @@ data class DiaryUiState(
     val needLocationPermission: Boolean = false,
     val syncEndpoint: String = "",
     val syncToken: String = "",
+    val editorFontSp: Float = 17f,
 )
 
 class DiaryViewModel(app: Application) : AndroidViewModel(app) {
@@ -46,12 +48,14 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private val placeResolver = PlaceResolver(app)
     private val weatherService = WeatherService()
     private val syncPrefs = SyncPrefs(app)
+    private val appPrefs = AppPrefs(app)
     private val syncClient = SyncClient(repo, syncPrefs)
 
     private val _state = MutableStateFlow(
         DiaryUiState(
             syncEndpoint = syncPrefs.endpoint,
             syncToken = syncPrefs.token,
+            editorFontSp = appPrefs.editorFontSp,
         )
     )
     val state: StateFlow<DiaryUiState> = _state.asStateFlow()
@@ -140,6 +144,11 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                 status = "同步设置已保存",
             )
         }
+    }
+
+    fun setEditorFontSp(sp: Float) {
+        appPrefs.editorFontSp = sp
+        _state.update { it.copy(editorFontSp = appPrefs.editorFontSp) }
     }
 
     fun syncNow(entryDate: String? = null) {

@@ -6,10 +6,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -26,20 +27,27 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CloudSync
+import androidx.compose.material.icons.outlined.FormatBold
+import androidx.compose.material.icons.outlined.FormatItalic
 import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.outlined.Title
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -58,11 +66,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.mohamedrejeb.richeditor.model.RichTextState
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import com.personaldiary.android.data.DayContext
@@ -70,17 +81,18 @@ import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.MarkdownImages
 import com.personaldiary.android.data.TimelineDay
-import com.personaldiary.android.ui.theme.InkAccent
 import com.personaldiary.android.ui.theme.AppFontFamily
+import com.personaldiary.android.ui.theme.InkAccent
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
-import java.io.File
 import java.time.LocalDate
 import java.time.format.TextStyle as JavaTextStyle
 import java.util.Locale
 
 private object Routes {
-    const val Timeline = "timeline"
+    const val Home = "home"
+    const val Charts = "charts"
+    const val Settings = "settings"
     const val Day = "day/{date}"
     const val Note = "note/{id}"
     fun day(date: String) = "day/$date"
@@ -91,7 +103,9 @@ private object Routes {
 fun DiaryApp(viewModel: DiaryViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val navController = rememberNavController()
-    var showSyncSettings by remember { mutableStateOf(false) }
+    val backStack by navController.currentBackStackEntryAsState()
+    val route = backStack?.destination?.route.orEmpty()
+    val showBottomBar = route in setOf(Routes.Home, Routes.Charts, Routes.Settings)
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -112,86 +126,135 @@ fun DiaryApp(viewModel: DiaryViewModel) {
         }
     }
 
-    if (showSyncSettings) {
-        SyncSettingsDialog(
-            endpoint = state.syncEndpoint,
-            token = state.syncToken,
-            onDismiss = { showSyncSettings = false },
-            onSave = { ep, tok ->
-                viewModel.saveSyncSettings(ep, tok)
-                showSyncSettings = false
-            },
-        )
-    }
-
-    NavHost(navController = navController, startDestination = Routes.Timeline) {
-        composable(Routes.Timeline) {
-            TimelineScreen(
-                days = state.timeline,
-                syncing = state.syncing,
-                onOpenDay = { date ->
-                    viewModel.openDay(date)
-                    navController.navigate(Routes.day(date))
-                },
-                onSync = {
-                    if (state.syncEndpoint.isBlank() || state.syncToken.isBlank()) {
-                        showSyncSettings = true
-                    } else {
-                        viewModel.syncNow(DiaryDates.today())
-                    }
-                },
-                onSyncSettings = { showSyncSettings = true },
-            )
-        }
-        composable(
-            route = Routes.Day,
-            arguments = listOf(navArgument("date") { type = NavType.StringType }),
-        ) { backStack ->
-            val date = backStack.arguments?.getString("date") ?: DiaryDates.today()
-            LaunchedEffect(date) { viewModel.openDay(date) }
-            DayListScreen(
-                date = date,
-                context = state.dayContext,
-                notes = state.dayNotes,
-                weatherLoading = state.weatherLoading,
-                onBack = { navController.popBackStack() },
-                onOpenNote = { id ->
-                    viewModel.openNote(id)
-                    navController.navigate(Routes.note(id))
-                },
-                onNewNote = {
-                    val id = viewModel.createNote(date)
-                    navController.navigate(Routes.note(id))
-                },
-            )
-        }
-        composable(
-            route = Routes.Note,
-            arguments = listOf(navArgument("id") { type = NavType.StringType }),
-        ) { backStack ->
-            val id = backStack.arguments?.getString("id").orEmpty()
-            LaunchedEffect(id) { viewModel.openNote(id) }
-            val entry = state.entry
-            if (entry != null) {
-                NoteEditorScreen(
-                    entry = entry,
-                    context = state.dayContext,
-                    status = state.status,
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            if (showBottomBar) {
+                NavigationBar {
+                    NavigationBarItem(
+                        selected = route == Routes.Home,
+                        onClick = {
+                            navController.navigate(Routes.Home) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(Icons.AutoMirrored.Outlined.MenuBook, contentDescription = null) },
+                        label = { Text("日记") },
+                    )
+                    NavigationBarItem(
+                        selected = route == Routes.Charts,
+                        onClick = {
+                            navController.navigate(Routes.Charts) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(Icons.Outlined.BarChart, contentDescription = null) },
+                        label = { Text("图表") },
+                    )
+                    NavigationBarItem(
+                        selected = route == Routes.Settings,
+                        onClick = {
+                            navController.navigate(Routes.Settings) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                        },
+                        icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },
+                        label = { Text("设置") },
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = Routes.Home,
+            modifier = Modifier.padding(padding),
+        ) {
+            composable(Routes.Home) {
+                HomeScreen(
+                    days = state.timeline,
                     syncing = state.syncing,
-                    onBack = { navController.popBackStack() },
-                    onBodyChange = viewModel::onBodyChange,
-                    onPickImage = { uri, insert ->
-                        viewModel.addImage(uri, insert)
+                    status = state.status,
+                    onOpenDay = { date ->
+                        viewModel.openDay(date)
+                        navController.navigate(Routes.day(date))
+                    },
+                    onNewToday = {
+                        val id = viewModel.createNote(DiaryDates.today())
+                        navController.navigate(Routes.note(id))
                     },
                     onSync = {
-                        if (state.syncEndpoint.isBlank() || state.syncToken.isBlank()) {
-                            showSyncSettings = true
-                        } else {
-                            viewModel.syncNow(entry.entryDate)
-                        }
+                        viewModel.syncNow(DiaryDates.today())
                     },
-                    onSyncSettings = { showSyncSettings = true },
                 )
+            }
+            composable(Routes.Charts) { ChartsPlaceholderScreen() }
+            composable(Routes.Settings) {
+                SettingsScreen(
+                    endpoint = state.syncEndpoint,
+                    token = state.syncToken,
+                    fontSp = state.editorFontSp,
+                    onSaveSync = viewModel::saveSyncSettings,
+                    onFontChange = viewModel::setEditorFontSp,
+                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                    syncing = state.syncing,
+                    status = state.status,
+                )
+            }
+            composable(
+                route = Routes.Day,
+                arguments = listOf(navArgument("date") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val date = backStackEntry.arguments?.getString("date") ?: DiaryDates.today()
+                LaunchedEffect(date) { viewModel.openDay(date) }
+                DayListScreen(
+                    date = date,
+                    context = state.dayContext,
+                    notes = state.dayNotes,
+                    weatherLoading = state.weatherLoading,
+                    onBack = { navController.popBackStack() },
+                    onOpenNote = { id ->
+                        viewModel.openNote(id)
+                        navController.navigate(Routes.note(id))
+                    },
+                    onNewNote = {
+                        val id = viewModel.createNote(date)
+                        navController.navigate(Routes.note(id))
+                    },
+                )
+            }
+            composable(
+                route = Routes.Note,
+                arguments = listOf(navArgument("id") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val id = backStackEntry.arguments?.getString("id").orEmpty()
+                LaunchedEffect(id) { viewModel.openNote(id) }
+                val entry = state.entry
+                if (entry != null) {
+                    NoteEditorScreen(
+                        entry = entry,
+                        context = state.dayContext,
+                        status = state.status,
+                        syncing = state.syncing,
+                        fontSp = state.editorFontSp,
+                        onBack = { navController.popBackStack() },
+                        onBodyChange = viewModel::onBodyChange,
+                        onPickImage = { uri, insert -> viewModel.addImage(uri, insert) },
+                        onSync = { viewModel.syncNow(entry.entryDate) },
+                    )
+                }
             }
         }
     }
@@ -199,49 +262,74 @@ fun DiaryApp(viewModel: DiaryViewModel) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TimelineScreen(
+private fun HomeScreen(
     days: List<TimelineDay>,
     syncing: Boolean,
+    status: String,
     onOpenDay: (String) -> Unit,
+    onNewToday: () -> Unit,
     onSync: () -> Unit,
-    onSyncSettings: () -> Unit,
 ) {
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
-                title = { Text("时间线") },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                ),
-                actions = {
-                    IconButton(onClick = onSyncSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "同步设置")
+                title = {
+                    Column {
+                        Text("日记", fontWeight = FontWeight.Bold)
+                        Text(
+                            "本地优先 · 可同步",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
+                },
+                actions = {
                     IconButton(onClick = onSync, enabled = !syncing) {
                         if (syncing) {
-                            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                            )
                         } else {
                             Icon(Icons.Outlined.CloudSync, contentDescription = "同步")
                         }
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
             )
+        },
+        floatingActionButton = {
+            FloatingActionButton(onClick = onNewToday) {
+                Icon(Icons.Filled.Add, contentDescription = "新建今天的笔记")
+            }
         },
     ) { padding ->
         Column(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 22.dp),
+                .padding(horizontal = 20.dp),
         ) {
-            if (days.isEmpty()) {
+            if (status.isNotBlank()) {
                 Text(
-                    "还没有日记",
+                    status,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier.padding(bottom = 8.dp),
                 )
+            }
+            if (days.isEmpty()) {
+                Column(Modifier.padding(top = 28.dp)) {
+                    Text("还没有日记", style = MaterialTheme.typography.titleLarge)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "点右下角 +，写今天的第一条。",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else {
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
                     items(days, key = { it.date }) { day ->
@@ -259,29 +347,24 @@ private fun TimelineDayRow(day: TimelineDay, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(vertical = 14.dp)
+            .padding(vertical = 14.dp),
     ) {
         Text(
             day.date,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
         )
-        if (day.context.contextLine().isNotBlank()) {
-            Text(
-                day.context.contextLine(),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
         Text(
-            "${day.notes.size} 篇笔记",
-            style = MaterialTheme.typography.bodyMedium,
+            "${day.notes.size} 篇 · ${day.notes.firstOrNull()?.title ?: "空白日"}",
+            style = MaterialTheme.typography.titleMedium,
+            maxLines = 1,
         )
         day.notes.firstOrNull()?.let { first ->
             Text(
-                first.title,
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
+                notePreview(first.body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
             )
         }
         Spacer(Modifier.height(10.dp))
@@ -289,7 +372,113 @@ private fun TimelineDayRow(day: TimelineDay, onClick: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+                .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)),
+        )
+    }
+}
+
+@Composable
+private fun ChartsPlaceholderScreen() {
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(
+            Icons.Outlined.BarChart,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(40.dp),
+        )
+        Spacer(Modifier.height(12.dp))
+        Text("图表", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "写作统计、心情与天气曲线会放在这里。\n当前先留位，不影响日记与同步。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(
+    endpoint: String,
+    token: String,
+    fontSp: Float,
+    onSaveSync: (String, String) -> Unit,
+    onFontChange: (Float) -> Unit,
+    onSyncNow: () -> Unit,
+    syncing: Boolean,
+    status: String,
+) {
+    var ep by remember(endpoint) { mutableStateOf(endpoint) }
+    var tok by remember(token) { mutableStateOf(token) }
+    var font by remember(fontSp) { mutableStateOf(fontSp) }
+
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text("设置", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+
+        Text("书写", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Text("正文字号 ${font.toInt()} sp", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = font,
+            onValueChange = {
+                font = it
+                onFontChange(it)
+            },
+            valueRange = 14f..24f,
+            steps = 9,
+        )
+        Text(
+            "拖动滑块即时生效。示例：今天也值得认真写一句。",
+            style = MaterialTheme.typography.bodyLarge.copy(
+                fontFamily = AppFontFamily,
+                fontSize = font.sp,
+                lineHeight = (font * 1.55f).sp,
+            ),
+        )
+
+        Text("同步", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        OutlinedTextField(
+            value = ep,
+            onValueChange = { ep = it },
+            label = { Text("服务地址") },
+            placeholder = { Text("https://diary.xybkwd.top") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        OutlinedTextField(
+            value = tok,
+            onValueChange = { tok = it },
+            label = { Text("Token") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { onSaveSync(ep, tok) }) { Text("保存同步设置") }
+            TextButton(onClick = onSyncNow, enabled = !syncing) {
+                Text(if (syncing) "同步中…" else "立即同步")
+            }
+        }
+        if (status.isNotBlank()) {
+            Text(status, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+
+        Text("关于", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+        Text(
+            "个人日记 · 本地优先 · 协议 v2\n地点与天气仅在新建当日首次采集。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -330,23 +519,23 @@ private fun DayListScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(horizontal = 22.dp),
+                .padding(horizontal = 20.dp),
         ) {
-            DayContextRow(context = context, weatherLoading = weatherLoading)
+            ContextMiniCard(context = context, weatherLoading = weatherLoading)
             Spacer(Modifier.height(12.dp))
             if (notes.isEmpty()) {
                 Text(
-                    "今天还没有笔记，点 + 开始写",
+                    "这一天还没有笔记，点 + 新建。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                LazyColumn {
                     items(notes, key = { it.id }) { note ->
                         Column(
                             Modifier
                                 .fillMaxWidth()
                                 .clickable { onOpenNote(note.id) }
-                                .padding(vertical = 12.dp)
+                                .padding(vertical = 12.dp),
                         ) {
                             Text(note.title, style = MaterialTheme.typography.titleMedium)
                             Text(
@@ -360,7 +549,7 @@ private fun DayListScreen(
                                 Modifier
                                     .fillMaxWidth()
                                     .height(1.dp)
-                                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+                                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.35f)),
                             )
                         }
                     }
@@ -377,11 +566,11 @@ private fun NoteEditorScreen(
     context: DayContext,
     status: String,
     syncing: Boolean,
+    fontSp: Float,
     onBack: () -> Unit,
     onBodyChange: (String) -> Unit,
     onPickImage: (android.net.Uri, (String) -> Unit) -> Unit,
     onSync: () -> Unit,
-    onSyncSettings: () -> Unit,
 ) {
     val richTextState = rememberRichTextState()
     var loadedEntryId by remember { mutableStateOf<String?>(null) }
@@ -414,7 +603,7 @@ private fun NoteEditorScreen(
     }
 
     val imageLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.GetContent()
+        ActivityResultContracts.GetContent(),
     ) { uri ->
         if (uri != null) {
             onPickImage(uri) { rel ->
@@ -440,12 +629,12 @@ private fun NoteEditorScreen(
                     IconButton(onClick = { imageLauncher.launch("image/*") }) {
                         Icon(Icons.Outlined.Image, contentDescription = "插入图片")
                     }
-                    IconButton(onClick = onSyncSettings) {
-                        Icon(Icons.Outlined.Settings, contentDescription = "同步设置")
-                    }
                     IconButton(onClick = onSync, enabled = !syncing) {
                         if (syncing) {
-                            CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                            androidx.compose.material3.CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.dp,
+                            )
                         } else {
                             Icon(Icons.Outlined.CloudSync, contentDescription = "同步")
                         }
@@ -463,26 +652,32 @@ private fun NoteEditorScreen(
                 .padding(padding)
                 .imePadding()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 18.dp, vertical = 8.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
             Text(
                 formatHeading(entry.entryDate),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
-            DayContextRow(context = context, weatherLoading = false)
-            Text(
-                status,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
             Spacer(Modifier.height(8.dp))
+            ContextMiniCard(context = context, weatherLoading = false)
+            Spacer(Modifier.height(8.dp))
+            MarkdownToolbar(state = richTextState)
+            Spacer(Modifier.height(6.dp))
+            if (status.isNotBlank()) {
+                Text(
+                    status,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+            }
             Box(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surface)
-                    .padding(14.dp)
+                    .padding(12.dp),
             ) {
                 RichTextEditor(
                     state = richTextState,
@@ -491,8 +686,8 @@ private fun NoteEditorScreen(
                         .bringIntoViewRequester(bringIntoViewRequester),
                     textStyle = androidx.compose.ui.text.TextStyle(
                         fontFamily = AppFontFamily,
-                        fontSize = 16.sp,
-                        lineHeight = 26.sp,
+                        fontSize = fontSp.sp,
+                        lineHeight = (fontSp * 1.55f).sp,
                         color = MaterialTheme.colorScheme.onSurface,
                     ),
                     colors = com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults.richTextEditorColors(
@@ -506,67 +701,93 @@ private fun NoteEditorScreen(
 }
 
 @Composable
-private fun DayContextRow(context: DayContext, weatherLoading: Boolean) {
+private fun MarkdownToolbar(state: RichTextState) {
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
+            .padding(horizontal = 4.dp, vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val line = context.contextLine().ifBlank {
-            if (weatherLoading) "正在记录地点与天气…" else ""
+        IconButton(onClick = { state.toggleSpanStyle(androidx.compose.ui.text.SpanStyle(fontWeight = FontWeight.Bold)) }) {
+            Icon(Icons.Outlined.FormatBold, contentDescription = "加粗")
         }
-        if (line.isNotBlank()) {
-            Text(
-                line,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.weight(1f),
+        IconButton(onClick = {
+            state.toggleSpanStyle(
+                androidx.compose.ui.text.SpanStyle(fontStyle = androidx.compose.ui.text.font.FontStyle.Italic),
             )
-        } else {
-            Spacer(Modifier.weight(1f))
+        }) {
+            Icon(Icons.Outlined.FormatItalic, contentDescription = "斜体")
         }
-        if (weatherLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(18.dp),
-                strokeWidth = 2.dp,
-            )
+        IconButton(onClick = {
+            val md = state.toMarkdown().trimEnd() + "\n\n## "
+            state.setMarkdown(md)
+        }) {
+            Icon(Icons.Outlined.Title, contentDescription = "标题")
+        }
+        IconButton(onClick = {
+            // Unordered list via markdown insert fallback
+            val md = state.toMarkdown().trimEnd() + "\n- "
+            state.setMarkdown(md)
+        }) {
+            Icon(Icons.AutoMirrored.Outlined.FormatListBulleted, contentDescription = "列表")
         }
     }
 }
 
 @Composable
-private fun SyncSettingsDialog(
-    endpoint: String,
-    token: String,
-    onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit,
-) {
-    var ep by remember { mutableStateOf(endpoint) }
-    var tok by remember { mutableStateOf(token) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("同步设置") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = ep,
-                    onValueChange = { ep = it },
-                    label = { Text("服务地址") },
-                    placeholder = { Text("https://your-vps") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+private fun ContextMiniCard(context: DayContext, weatherLoading: Boolean) {
+    if (!context.hasContext && !weatherLoading) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            if (weatherLoading && !context.hasContext) {
+                Text(
+                    "正在记录地点与天气…",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                 )
-                OutlinedTextField(
-                    value = tok,
-                    onValueChange = { tok = it },
-                    label = { Text("Token") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+            } else {
+                if (context.location.isNotBlank()) {
+                    Text(
+                        context.location,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 2,
+                    )
+                }
+                val wx = buildString {
+                    if (context.weather.isNotBlank()) append(context.weather)
+                    context.tempC?.let {
+                        if (isNotEmpty()) append(" · ")
+                        append(DiaryDates.formatTemp(it))
+                    }
+                }
+                if (wx.isNotBlank()) {
+                    Text(
+                        wx,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f),
+                    )
+                }
             }
-        },
-        confirmButton = { TextButton(onClick = { onSave(ep, tok) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
-    )
+        }
+        if (weatherLoading) {
+            Spacer(Modifier.width(8.dp))
+            androidx.compose.material3.CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+            )
+        }
+    }
 }
 
 private fun formatHeading(entryDate: String): String {
@@ -579,7 +800,7 @@ private fun formatHeading(entryDate: String): String {
 private fun notePreview(body: String): String {
     return body.lineSequence()
         .map { it.trim() }
-        .filter { it.isNotEmpty() && !it.startsWith("![") }
+        .filter { it.isNotEmpty() && !it.startsWith("![") && it != "［图片］" }
         .firstOrNull()
         ?.removePrefix("#")
         ?.trim()
