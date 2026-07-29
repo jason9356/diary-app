@@ -1,4 +1,4 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import org.json.JSONArray
 import org.json.JSONObject
@@ -19,7 +19,7 @@ class NativeTodoStore(dataRoot: File) {
     fun documentUpdatedAt(): String = readDoc().updatedAt
 
     fun add(text: String): NativeTodo {
-        val now = DiaryDates.nowIso()
+        val now = SparkDates.nowIso()
         val todo = NativeTodo(
             id = UUID.randomUUID().toString(),
             text = text.trim(),
@@ -32,7 +32,7 @@ class NativeTodoStore(dataRoot: File) {
     }
 
     fun upsert(todo: NativeTodo): NativeTodo {
-        val now = DiaryDates.nowIso()
+        val now = SparkDates.nowIso()
         val saved = todo.copy(updatedAt = now)
         val doc = readDoc()
         val items = doc.items.toMutableList()
@@ -46,7 +46,7 @@ class NativeTodoStore(dataRoot: File) {
         val doc = readDoc()
         val idx = doc.items.indexOfFirst { it.id == id }
         if (idx < 0) return null
-        val updated = doc.items[idx].copy(done = done, updatedAt = DiaryDates.nowIso())
+        val updated = doc.items[idx].copy(done = done, updatedAt = SparkDates.nowIso())
         val items = doc.items.toMutableList().also { it[idx] = updated }
         writeDoc(TodoDocument(updatedAt = updated.updatedAt, items = items))
         return updated
@@ -54,13 +54,13 @@ class NativeTodoStore(dataRoot: File) {
 
     fun delete(id: String) {
         val doc = readDoc()
-        writeDoc(TodoDocument(updatedAt = DiaryDates.nowIso(), items = doc.items.filterNot { it.id == id }))
+        writeDoc(TodoDocument(updatedAt = SparkDates.nowIso(), items = doc.items.filterNot { it.id == id }))
     }
 
     fun replaceAll(items: List<NativeTodo>) {
         writeDoc(
             TodoDocument(
-                updatedAt = items.maxOfOrNull { it.updatedAt }.orEmpty().ifBlank { DiaryDates.nowIso() },
+                updatedAt = items.maxOfOrNull { it.updatedAt }.orEmpty().ifBlank { SparkDates.nowIso() },
                 items = items,
             ),
         )

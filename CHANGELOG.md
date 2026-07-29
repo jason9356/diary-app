@@ -2,18 +2,29 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，版本号遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
 
-## [Unreleased]
+## [1.0.0] — 2026-07-30 — 灵感匣第一版
 
 ### Added
 
-- **产品转向「灵感匣」**：灵感卡片（tags / 筛选）、本机待办、Obsidian 待办（S3）、AI 接口预留
-- **同步协议 v3**：health `protocol: 3`；`GET/PUT /v1/todos`；卡片 front matter `tags` / `pinned`
-- Android：底部灵感 / 待办 / 设置；扁平卡片流与标签筛选
+- Android 应用 ID `com.sparkbox.android`；版本名 `1.0.0`；APK 文件名「灵感匣-第一版」
+- Vault 本地目录 `files/vault`（自 `diary_data` 自动迁移）；布局内仍用 `diary/` 路径
+- 数据存放：仅本机 / 云盘（WebDAV）；事项 FAB 新建与增强字段
 
 ### Changed
 
-- README 与文档以 Android 灵感匣为主产品；桌面端降级为调试 / 备份
-- 同步服务标题与 health 标明 sparkbox
+- 工程与代码标识统一为 Sparkbox（去掉 personaldiary / Diary* 主路径命名）
+- 文档以灵感匣为主产品；自建同步与 Obsidian 桥不再作为产品能力
+
+### Removed
+
+- Android 自建 SyncClient、Obsidian/S3 待办桥
+
+## [Unreleased]
+
+### Added (earlier product pivot)
+
+- **产品转向「灵感匣」**：灵感卡片、本机事项、云盘同步预留
+- Android：底部灵感 / 事项 / 设置；青笺主题与全面屏状态栏
 
 ### Added (earlier)
 

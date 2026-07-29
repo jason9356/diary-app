@@ -1,49 +1,49 @@
 # 灵感匣（Sparkbox）
 
-本地优先的**灵感收集器**：随手记下想法与片段，按日期 / 标签检索；本机待办 + Obsidian 日记待办（经对象存储）可在同一 App 里完成。
+本地优先的**灵感收集器**：记下想法与片段，按日期 / 标签检索；事项可同步到 WebDAV 云盘。
 
-> 本项目已从「个人日记」转向灵感匣。日记请继续用你现有的工具；这里不再做日记替代品。
+> 产品定位是灵感匣，不是日记替代品。日记请继续用你现有的工具。
 
 当前主客户端：**Android**（[`android/`](./android/)）。  
-桌面 Python/PySide6 代码仍在 [`src/`](./src/)，仅作调试 / 备份参考，**不再是产品主路径**。
+桌面 Python/PySide6（[`src/`](./src/)）与旧同步服务（[`server/`](./server/)）为遗留参考，**不是产品主路径**。
 
-技术栈：Android Kotlin · Jetpack Compose · 本地 Markdown · FastAPI 同步服务 · 可选 S3 兼容对象存储。
+技术栈：Android Kotlin · Jetpack Compose · 本地 Markdown Vault · 可选 WebDAV。
 
 版本与变更见 [CHANGELOG.md](./CHANGELOG.md) · 许可 [MIT](./LICENSE)
 
 ## 功能概览
 
-- **灵感卡片**：扁平列表、搜索、日期 / 标签筛选、Markdown 编辑、图片附件
-- **同步**：自建服务端副本（协议见 [docs/sync-protocol.md](./docs/sync-protocol.md)，protocol 3）
-- **待办**：应用内待办；从 Obsidian 日记抽取并回写完成态（设置里配置 S3）
-- **AI**：设置中可开关接口预留（日报钩子等），暂不接模型
+- **灵感卡片**：列表、搜索、标签筛选、Markdown 编辑、图片附件
+- **事项**：类型 / 到期 / 优先级等增强字段；进入 Vault 一并备份
+- **数据存放**：仅本机，或云盘镜像（WebDAV 可用；其它厂商配置预留）
+- **AI**：设置中可开关接口预留，暂不接模型
 
 ## Android 快速开始
 
 ```powershell
 cd android
 .\gradlew.bat installDebug
+# 或产出第一版 APK：
+.\gradlew.bat assembleRelease
+# 产物：
+#   android/app/build/outputs/apk/release/Sparkbox-1.0-release.apk
+#   android/dist/Sparkbox-1.0.apk
+#   android/dist/灵感匣-第一版.apk
 ```
 
-模拟器建议使用 **Google APIs** 镜像（勿用 ATD，易黑屏）。
+模拟器建议使用 **Google APIs** 镜像（勿用 ATD）。
 
-## 同步服务
-
-见 [`server/README.md`](./server/README.md)。健康检查返回 `"protocol": 3`、`"product": "sparkbox"`。
+应用 ID：`com.sparkbox.android` · 版本：`1.0.0`（灵感匣第一版）
 
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
-| [docs/sync-protocol.md](./docs/sync-protocol.md) | 卡片同步协议 v3 |
+| [docs/vault-schema.md](./docs/vault-schema.md) | Vault 目录约定 |
 | [docs/android-client.md](./docs/android-client.md) | Android 说明 |
+| [docs/sync-protocol.md](./docs/sync-protocol.md) | 遗留自建同步协议（参考） |
 | [docs/RELEASE.md](./docs/RELEASE.md) | 发布备注 |
 
-## 桌面端（降级）
+## 许可
 
-```powershell
-.\setup.bat
-.\run.bat
-```
-
-桌面端仍可读写同一套 Markdown 布局，但产品文案与迭代以 Android 灵感匣为准。
+MIT

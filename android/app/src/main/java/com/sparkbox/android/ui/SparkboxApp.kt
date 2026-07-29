@@ -1,4 +1,4 @@
-package com.personaldiary.android.ui
+package com.sparkbox.android.ui
 
 import android.Manifest
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -93,14 +93,14 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import coil.compose.AsyncImage
-import com.personaldiary.android.data.DayContext
-import com.personaldiary.android.data.DeviceLabels
-import com.personaldiary.android.data.DiaryDates
-import com.personaldiary.android.data.DiaryEntry
-import com.personaldiary.android.data.MarkdownImages
-import com.personaldiary.android.data.NativeTodo
-import com.personaldiary.android.ui.theme.AppFontFamily
-import com.personaldiary.android.ui.theme.LocalAppColors
+import com.sparkbox.android.data.DayContext
+import com.sparkbox.android.data.DeviceLabels
+import com.sparkbox.android.data.SparkDates
+import com.sparkbox.android.data.SparkEntry
+import com.sparkbox.android.data.MarkdownImages
+import com.sparkbox.android.data.NativeTodo
+import com.sparkbox.android.ui.theme.AppFontFamily
+import com.sparkbox.android.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
 import java.io.File
 import java.time.LocalDate
@@ -131,7 +131,7 @@ private object Routes {
 }
 
 @Composable
-fun DiaryApp(viewModel: DiaryViewModel) {
+fun SparkboxApp(viewModel: SparkboxViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val navController = rememberNavController()
     val backStack by navController.currentBackStackEntryAsState()
@@ -246,10 +246,10 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                         navController.navigate(Routes.read(id))
                     },
                     onNew = {
-                        val id = viewModel.createNote(DiaryDates.today())
+                        val id = viewModel.createNote(SparkDates.today())
                         navController.navigate(Routes.edit(id))
                     },
-                    onSync = { viewModel.syncNow(DiaryDates.today()) },
+                    onSync = { viewModel.syncNow(SparkDates.today()) },
                 )
             }
             composable(Routes.Stats) {
@@ -334,7 +334,7 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                     onBack = { navController.popBackStack() },
                     onSelectTarget = viewModel::setStorageTarget,
                     onOpenCloud = { navController.navigate(Routes.SettingsStorageCloud) },
-                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                    onSyncNow = { viewModel.syncNow(SparkDates.today()) },
                 )
             }
             composable(Routes.SettingsStorageCloud) {
@@ -351,7 +351,7 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                     state = state,
                     onBack = { navController.popBackStack() },
                     onSave = viewModel::saveWebDavSettings,
-                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
+                    onSyncNow = { viewModel.syncNow(SparkDates.today()) },
                 )
             }
             composable(Routes.SettingsStorageStub) {
@@ -466,7 +466,7 @@ private fun TabActionIcon(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeScreen(
-    notes: List<DiaryEntry>,
+    notes: List<SparkEntry>,
     filterQuery: String,
     filterDate: String,
     filterTag: String,
@@ -627,7 +627,7 @@ private fun TagChipRow(tags: List<String>, compact: Boolean = false) {
 
 @Composable
 private fun InspirationCard(
-    note: DiaryEntry,
+    note: SparkEntry,
     resolveAsset: (String) -> File?,
     onOpen: () -> Unit,
 ) {
@@ -753,7 +753,7 @@ private fun CardMarkdownBody(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NoteReadScreen(
-    entry: DiaryEntry,
+    entry: SparkEntry,
     context: DayContext,
     weatherLoading: Boolean,
     fontSp: Float,
@@ -899,7 +899,7 @@ private fun ReadContextBlock(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun StatsScreen(
-    notes: List<DiaryEntry>,
+    notes: List<SparkEntry>,
     filterTag: String,
     onBack: () -> Unit,
     onSelectTag: (String) -> Unit,
@@ -1326,7 +1326,7 @@ private fun LevelPicker(value: Int, onChange: (Int) -> Unit) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun NoteEditorScreen(
-    entry: DiaryEntry,
+    entry: SparkEntry,
     syncing: Boolean,
     fontSp: Float,
     onBack: () -> Unit,
@@ -1508,7 +1508,7 @@ private fun formatShortDate(entryDate: String): String {
     return "${d.monthValue}月${d.dayOfMonth}日 · $week"
 }
 
-private fun noteDisplayTitle(note: DiaryEntry): String {
+private fun noteDisplayTitle(note: SparkEntry): String {
     val t = note.title.trim()
     return if (t.isBlank() || t == note.entryDate) {
         notePreview(note.body).takeIf { it != "（空）" } ?: "未命名灵感"

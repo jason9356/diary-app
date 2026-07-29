@@ -1,4 +1,4 @@
-package com.personaldiary.android.ui
+package com.sparkbox.android.ui
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString

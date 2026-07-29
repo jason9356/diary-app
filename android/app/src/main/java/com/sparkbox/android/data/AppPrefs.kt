@@ -1,10 +1,12 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import android.content.Context
 
 /** App-level preferences (theme, vault storage target, cloud credentials). */
 class AppPrefs(context: Context) {
-    private val sp = context.getSharedPreferences("diary_app", Context.MODE_PRIVATE)
+    private val sp = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).also { prefs ->
+        migrateFromLegacyIfNeeded(context, prefs)
+    }
 
     var editorFontSp: Float
         get() = sp.getFloat("editor_font_sp", 17f).coerceIn(14f, 24f)
@@ -81,4 +83,31 @@ class AppPrefs(context: Context) {
     var cloudToken: String
         get() = sp.getString("cloud_token", "").orEmpty()
         set(v) = sp.edit().putString("cloud_token", v.trim()).apply()
+
+    companion object {
+        private const val PREFS_NAME = "sparkbox_prefs"
+        private const val LEGACY_PREFS = "diary_app"
+
+        private fun migrateFromLegacyIfNeeded(context: Context, prefs: android.content.SharedPreferences) {
+            if (prefs.getBoolean("prefs_migrated_v1", false)) return
+            val legacy = context.getSharedPreferences(LEGACY_PREFS, Context.MODE_PRIVATE)
+            val ed = prefs.edit()
+            if (legacy.all.isNotEmpty()) {
+                for ((k, v) in legacy.all) {
+                    when (v) {
+                        is String -> ed.putString(k, v)
+                        is Boolean -> ed.putBoolean(k, v)
+                        is Float -> ed.putFloat(k, v)
+                        is Int -> ed.putInt(k, v)
+                        is Long -> ed.putLong(k, v)
+                        is Set<*> -> {
+                            @Suppress("UNCHECKED_CAST")
+                            ed.putStringSet(k, v as Set<String>)
+                        }
+                    }
+                }
+            }
+            ed.putBoolean("prefs_migrated_v1", true).apply()
+        }
+    }
 }

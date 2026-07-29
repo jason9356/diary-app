@@ -1,23 +1,23 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /** Inspiration card (formerly diary note). Stored as Markdown with UUID id. */
-data class DiaryEntry(
+data class SparkEntry(
     val id: String,
     val entryDate: String,
     val title: String = entryDate,
     val body: String = "",
-    val createdAt: String = DiaryDates.nowIso(),
-    val updatedAt: String = DiaryDates.nowIso(),
+    val createdAt: String = SparkDates.nowIso(),
+    val updatedAt: String = SparkDates.nowIso(),
     val writingDurationSec: Int = 0,
     val imageRels: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val pinned: Boolean = false,
 )
 
-typealias InspirationCard = DiaryEntry
+typealias InspirationCard = SparkEntry
 
 data class DayContext(
     val date: String,
@@ -36,8 +36,8 @@ data class DayContext(
     fun weatherLine(): String {
         val wx = weather.trim()
         return when {
-            tempC != null && wx.isNotEmpty() -> "$wx ${DiaryDates.formatTemp(tempC)}"
-            tempC != null -> DiaryDates.formatTemp(tempC)
+            tempC != null && wx.isNotEmpty() -> "$wx ${SparkDates.formatTemp(tempC)}"
+            tempC != null -> SparkDates.formatTemp(tempC)
             else -> wx
         }
     }
@@ -61,7 +61,7 @@ data class WeatherSnapshot(
 data class TimelineDay(
     val date: String,
     val context: DayContext,
-    val notes: List<DiaryEntry>,
+    val notes: List<SparkEntry>,
 )
 
 data class NativeTodo(
@@ -77,11 +77,11 @@ data class NativeTodo(
     val priority: Int = 0,
     /** 0 none, 1..3 low/med/high */
     val urgency: Int = 0,
-    val createdAt: String = DiaryDates.nowIso(),
-    val updatedAt: String = DiaryDates.nowIso(),
+    val createdAt: String = SparkDates.nowIso(),
+    val updatedAt: String = SparkDates.nowIso(),
 )
 
-object DiaryDates {
+object SparkDates {
     fun today(): String = LocalDate.now().toString()
 
     fun nowIso(): String = OffsetDateTime.now().toString()

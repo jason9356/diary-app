@@ -5,22 +5,29 @@ plugins {
 }
 
 android {
-    namespace = "com.personaldiary.android"
+    namespace = "com.sparkbox.android"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.personaldiary.android"
+        applicationId = "com.sparkbox.android"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables.useSupportLibrary = true
+    }
+
+    base {
+        // ASCII for tooling; Chinese copy is written to android/dist/
+        archivesName.set("Sparkbox-1.0")
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Personal first release: signed with debug keystore for sideload.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

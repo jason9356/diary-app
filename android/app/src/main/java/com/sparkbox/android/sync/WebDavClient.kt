@@ -1,4 +1,4 @@
-package com.personaldiary.android.sync
+package com.sparkbox.android.sync
 
 import okhttp3.Credentials
 import okhttp3.MediaType.Companion.toMediaType

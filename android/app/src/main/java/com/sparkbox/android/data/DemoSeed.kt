@@ -1,17 +1,17 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import java.time.LocalDate
 import java.util.UUID
 
 /** One-shot sample cards / todos so the UI has something to read. */
 object DemoSeed {
-    fun ensure(repo: DiaryRepository, todos: NativeTodoStore, prefs: AppPrefs) {
+    fun ensure(repo: SparkboxRepository, todos: NativeTodoStore, prefs: AppPrefs) {
         if (prefs.demoSeeded) return
         val today = LocalDate.now()
         val yesterday = today.minusDays(1)
         val todayStr = today.toString()
         val yesterdayStr = yesterday.toString()
-        val now = DiaryDates.nowIso()
+        val now = SparkDates.nowIso()
 
         repo.writeDayContext(
             DayContext(
@@ -42,7 +42,7 @@ object DemoSeed {
             val id = UUID.randomUUID().toString()
             val created = java.time.OffsetDateTime.now().minusMinutes(createdOffsetMin).toString()
             repo.save(
-                DiaryEntry(
+                SparkEntry(
                     id = id,
                     entryDate = date,
                     title = date,

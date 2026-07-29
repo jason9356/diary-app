@@ -1,26 +1,26 @@
-package com.personaldiary.android.ui
+package com.sparkbox.android.ui
 
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.personaldiary.android.DiaryApplication
-import com.personaldiary.android.ai.AiHooks
-import com.personaldiary.android.ai.NoOpAiHooks
-import com.personaldiary.android.data.DayContext
-import com.personaldiary.android.data.DemoSeed
-import com.personaldiary.android.data.DiaryDates
-import com.personaldiary.android.data.DiaryEntry
-import com.personaldiary.android.data.DiaryRepository
-import com.personaldiary.android.data.NativeTodo
-import com.personaldiary.android.data.NativeTodoStore
-import com.personaldiary.android.data.AppPrefs
-import com.personaldiary.android.sync.VaultMirror
-import com.personaldiary.android.sync.WebDavClient
-import com.personaldiary.android.sync.WebDavConfig
-import com.personaldiary.android.weather.LocationHelper
-import com.personaldiary.android.weather.PlaceResolver
-import com.personaldiary.android.weather.WeatherService
+import com.sparkbox.android.SparkboxApplication
+import com.sparkbox.android.ai.AiHooks
+import com.sparkbox.android.ai.NoOpAiHooks
+import com.sparkbox.android.data.DayContext
+import com.sparkbox.android.data.DemoSeed
+import com.sparkbox.android.data.SparkDates
+import com.sparkbox.android.data.SparkEntry
+import com.sparkbox.android.data.SparkboxRepository
+import com.sparkbox.android.data.NativeTodo
+import com.sparkbox.android.data.NativeTodoStore
+import com.sparkbox.android.data.AppPrefs
+import com.sparkbox.android.sync.VaultMirror
+import com.sparkbox.android.sync.WebDavClient
+import com.sparkbox.android.sync.WebDavConfig
+import com.sparkbox.android.weather.LocationHelper
+import com.sparkbox.android.weather.PlaceResolver
+import com.sparkbox.android.weather.WeatherService
 import kotlinx.coroutines.Dispatchers
 import java.io.File
 import kotlinx.coroutines.Job
@@ -32,17 +32,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class DiaryUiState(
-    val entry: DiaryEntry? = null,
-    val dayContext: DayContext = DayContext(date = DiaryDates.today()),
-    val notes: List<DiaryEntry> = emptyList(),
-    val filteredNotes: List<DiaryEntry> = emptyList(),
+data class SparkboxUiState(
+    val entry: SparkEntry? = null,
+    val dayContext: DayContext = DayContext(date = SparkDates.today()),
+    val notes: List<SparkEntry> = emptyList(),
+    val filteredNotes: List<SparkEntry> = emptyList(),
     val allTags: List<String> = emptyList(),
     val filterQuery: String = "",
     val filterDate: String = "",
     val filterTag: String = "",
     val nativeTodos: List<NativeTodo> = emptyList(),
-    val selectedDate: String = DiaryDates.today(),
+    val selectedDate: String = SparkDates.today(),
     val weatherLoading: Boolean = false,
     val syncing: Boolean = false,
     val status: String = "",
@@ -65,9 +65,9 @@ data class DiaryUiState(
     val aiPreview: String = "",
 )
 
-class DiaryViewModel(app: Application) : AndroidViewModel(app) {
-    private val appCtx = app as DiaryApplication
-    private val repo: DiaryRepository = appCtx.repository
+class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
+    private val appCtx = app as SparkboxApplication
+    private val repo: SparkboxRepository = appCtx.repository
     private val todoStore: NativeTodoStore = appCtx.todoStore
     private val appPrefs = AppPrefs(app)
     private val locationHelper = LocationHelper(app)
@@ -75,7 +75,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private val weatherService = WeatherService()
 
     private val _state = MutableStateFlow(loadPrefsState())
-    val state: StateFlow<DiaryUiState> = _state.asStateFlow()
+    val state: StateFlow<SparkboxUiState> = _state.asStateFlow()
 
     private var autosaveJob: Job? = null
 
@@ -94,8 +94,8 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun loadPrefsState(): DiaryUiState =
-        DiaryUiState(
+    private fun loadPrefsState(): SparkboxUiState =
+        SparkboxUiState(
             editorFontSp = appPrefs.editorFontSp,
             themeMode = appPrefs.themeMode,
             themePalette = appPrefs.themePalette,
@@ -163,11 +163,11 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun applyFilters(
-        notes: List<DiaryEntry>,
+        notes: List<SparkEntry>,
         query: String,
         date: String,
         tag: String,
-    ): List<DiaryEntry> {
+    ): List<SparkEntry> {
         val q = query.trim()
         return notes.filter { n ->
             (date.isBlank() || n.entryDate == date) &&
@@ -197,7 +197,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
                     status = "",
                 )
             }
-            if (entry.entryDate == DiaryDates.today() && !context.hasContext) {
+            if (entry.entryDate == SparkDates.today() && !context.hasContext) {
                 captureContextOnce(entry.entryDate)
             }
         }
@@ -264,7 +264,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun runAiDigestPreview() {
-        val today = DiaryDates.today()
+        val today = SparkDates.today()
         val cards = _state.value.notes.filter { it.entryDate == today }
         _state.update { it.copy(aiPreview = ai().dailyDigest(today, cards)) }
     }
@@ -404,7 +404,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
             }
             _state.update { it.copy(weatherLoading = true, needLocationPermission = false) }
             val loc = locationHelper.currentLocation()
-            if (loc == null || entryDate != DiaryDates.today()) {
+            if (loc == null || entryDate != SparkDates.today()) {
                 _state.update { it.copy(weatherLoading = false) }
                 return@launch
             }
@@ -422,7 +422,7 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     fun onPermissionResult(granted: Boolean) {
         if (granted) {
             val date = _state.value.selectedDate
-            if (date == DiaryDates.today() && !_state.value.dayContext.hasContext) {
+            if (date == SparkDates.today() && !_state.value.dayContext.hasContext) {
                 captureContextOnce(date)
             } else {
                 _state.update { it.copy(needLocationPermission = false) }

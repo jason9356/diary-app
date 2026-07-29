@@ -1,6 +1,6 @@
-package com.personaldiary.android.weather
+package com.sparkbox.android.weather
 
-import com.personaldiary.android.data.WeatherSnapshot
+import com.sparkbox.android.data.WeatherSnapshot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -44,7 +44,7 @@ class WeatherService(
     private fun httpGet(url: String): String? {
         val req = Request.Builder()
             .url(url)
-            .header("User-Agent", "DiaryAndroid/0.1 (Open-Meteo)")
+            .header("User-Agent", "Sparkbox/0.1 (Open-Meteo)")
             .build()
         client.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return null

@@ -1,4 +1,4 @@
-package com.personaldiary.android.ui.theme
+package com.sparkbox.android.ui.theme
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -166,7 +166,7 @@ val SparkCopper get() = PaletteCatalog.slip(false).accent
 val InkAccent get() = PaletteCatalog.slip(false).accent
 
 @Composable
-fun DiaryTheme(
+fun SparkboxTheme(
     paletteId: String = ThemePalette.Slip.id,
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit,

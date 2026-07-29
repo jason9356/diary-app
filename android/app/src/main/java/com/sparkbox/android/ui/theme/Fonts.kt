@@ -1,4 +1,4 @@
-package com.personaldiary.android.ui.theme
+package com.sparkbox.android.ui.theme
 
 import androidx.compose.ui.text.font.FontFamily
 

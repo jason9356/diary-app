@@ -1,4 +1,4 @@
-package com.personaldiary.android
+package com.sparkbox.android
 
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
@@ -15,17 +15,17 @@ import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.personaldiary.android.ui.DiaryApp
-import com.personaldiary.android.ui.DiaryViewModel
-import com.personaldiary.android.ui.theme.DiaryTheme
-import com.personaldiary.android.ui.theme.LocalAppColors
+import com.sparkbox.android.ui.SparkboxApp
+import com.sparkbox.android.ui.SparkboxViewModel
+import com.sparkbox.android.ui.theme.SparkboxTheme
+import com.sparkbox.android.ui.theme.LocalAppColors
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: DiaryViewModel by viewModels {
+    private val viewModel: SparkboxViewModel by viewModels {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                return DiaryViewModel(application) as T
+                return SparkboxViewModel(application) as T
             }
         }
     }
@@ -40,7 +40,7 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
-            DiaryTheme(paletteId = state.themePalette, darkTheme = dark) {
+            SparkboxTheme(paletteId = state.themePalette, darkTheme = dark) {
                 val view = LocalView.current
                 val field = LocalAppColors.current.field
                 SideEffect {
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
                     insets.isAppearanceLightStatusBars = !dark
                     insets.isAppearanceLightNavigationBars = !dark
                 }
-                DiaryApp(viewModel)
+                SparkboxApp(viewModel)
             }
         }
     }

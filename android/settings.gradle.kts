@@ -18,5 +18,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DiaryAndroid"
+rootProject.name = "Sparkbox"
 include(":app")

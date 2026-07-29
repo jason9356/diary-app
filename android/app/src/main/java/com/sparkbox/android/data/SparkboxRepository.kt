@@ -1,11 +1,11 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import android.content.Context
 import android.net.Uri
 import java.io.File
 import java.util.UUID
 
-class DiaryRepository(dataRoot: File) {
+class SparkboxRepository(dataRoot: File) {
     private val md = MarkdownStore(File(dataRoot, "diary"), File(dataRoot, "assets"))
     private val days = DayStore(File(dataRoot, "diary"))
     private val assets = AssetStore(File(dataRoot, "assets"))
@@ -16,17 +16,17 @@ class DiaryRepository(dataRoot: File) {
         md.migrateV1Layout(days)
     }
 
-    fun getById(entryId: String): DiaryEntry? {
+    fun getById(entryId: String): SparkEntry? {
         for ((id, date) in md.listNoteIds()) {
             if (id == entryId) return loadEntry(id, date)
         }
         return null
     }
 
-    fun getOrCreate(entryId: String, entryDate: String): DiaryEntry {
+    fun getOrCreate(entryId: String, entryDate: String): SparkEntry {
         if (md.exists(entryId, entryDate)) return loadEntry(entryId, entryDate)
-        val now = DiaryDates.nowIso()
-        return DiaryEntry(
+        val now = SparkDates.nowIso()
+        return SparkEntry(
             id = entryId,
             entryDate = entryDate,
             title = entryDate,
@@ -35,10 +35,10 @@ class DiaryRepository(dataRoot: File) {
         )
     }
 
-    fun createNote(entryDate: String): DiaryEntry {
+    fun createNote(entryDate: String): SparkEntry {
         val id = UUID.randomUUID().toString()
-        val now = DiaryDates.nowIso()
-        val entry = DiaryEntry(
+        val now = SparkDates.nowIso()
+        val entry = SparkEntry(
             id = id,
             entryDate = entryDate,
             title = entryDate,
@@ -57,20 +57,20 @@ class DiaryRepository(dataRoot: File) {
         return entry
     }
 
-    fun listForDate(entryDate: String): List<DiaryEntry> =
+    fun listForDate(entryDate: String): List<SparkEntry> =
         md.listNoteIds()
             .filter { (_, date) -> date == entryDate }
             .map { (id, date) -> loadEntry(id, date) }
             .sortedByDescending { it.updatedAt }
 
     /** Flat card list for the home screen (pinned first, then newest). */
-    fun listAllNotes(): List<DiaryEntry> =
+    fun listAllNotes(): List<SparkEntry> =
         md.listParsedNotes()
             .map { parsed ->
                 val fm = parsed.frontMatter
                 val title = fm.title.ifBlank { extractTitle(parsed.body, parsed.date) }
-                val now = DiaryDates.nowIso()
-                DiaryEntry(
+                val now = SparkDates.nowIso()
+                SparkEntry(
                     id = fm.id.ifBlank { parsed.id },
                     entryDate = fm.date.ifBlank { parsed.date },
                     title = title,
@@ -84,7 +84,7 @@ class DiaryRepository(dataRoot: File) {
                 )
             }
             .sortedWith(
-                compareByDescending<DiaryEntry> { it.pinned }
+                compareByDescending<SparkEntry> { it.pinned }
                     .thenByDescending { it.entryDate }
                     .thenByDescending { it.updatedAt },
             )
@@ -107,9 +107,9 @@ class DiaryRepository(dataRoot: File) {
 
     fun getDayContext(entryDate: String): DayContext = days.getOrEmpty(entryDate)
 
-    fun save(entry: DiaryEntry): DiaryEntry {
+    fun save(entry: SparkEntry): SparkEntry {
         val title = extractTitle(entry.body, entry.entryDate)
-        val now = DiaryDates.nowIso()
+        val now = SparkDates.nowIso()
         val id = entry.id.ifBlank { UUID.randomUUID().toString() }
         val created = entry.createdAt.ifBlank { now }
         val previous = if (md.exists(id, entry.entryDate)) loadEntry(id, entry.entryDate) else null
@@ -147,7 +147,7 @@ class DiaryRepository(dataRoot: File) {
         )
     }
 
-    fun applyRemoteMarkdown(entryId: String, entryDate: String, markdown: String): DiaryEntry {
+    fun applyRemoteMarkdown(entryId: String, entryDate: String, markdown: String): SparkEntry {
         md.writeRaw(entryId, entryDate, markdown)
         return loadEntry(entryId, entryDate)
     }
@@ -160,7 +160,7 @@ class DiaryRepository(dataRoot: File) {
         val old = rank[current.contextSource] ?: 0
         val neu = rank["phone"] ?: 3
         if (!force && neu < old) return current
-        val now = DiaryDates.nowIso()
+        val now = SparkDates.nowIso()
         return days.mergeWrite(
             DayContext(
                 date = entryDate,
@@ -203,12 +203,12 @@ class DiaryRepository(dataRoot: File) {
 
     fun listAssetFiles(entryId: String): List<File> = assets.listFiles(entryId)
 
-    private fun loadEntry(entryId: String, entryDate: String): DiaryEntry {
+    private fun loadEntry(entryId: String, entryDate: String): SparkEntry {
         val fm = md.readFrontMatter(entryId, entryDate)
         val body = md.readBody(entryId, entryDate)
         val title = fm.title.ifBlank { extractTitle(body, entryDate) }
-        val now = DiaryDates.nowIso()
-        return DiaryEntry(
+        val now = SparkDates.nowIso()
+        return SparkEntry(
             id = fm.id.ifBlank { entryId },
             entryDate = fm.date.ifBlank { entryDate },
             title = title,

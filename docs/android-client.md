@@ -1,6 +1,6 @@
-# Android 客户端（灵感匣）
+# Android 客户端（灵感匣 / Sparkbox）
 
-主产品端。代码在 `android/`，与桌面 `src/` 隔离。本地 Vault；可选 WebDAV 云盘镜像。
+主产品端。代码在 `android/`，包名 `com.sparkbox.android`。
 
 ## 设计
 
@@ -12,21 +12,32 @@
 ## 数据目录（应用私有存储）
 
 ```
-files/diary_data/
-├── diary/YYYY/MM/<uuid>.md    # 灵感卡片
-├── todos/todos.json           # 本机待办
-└── assets/<uuid>/<image>
+files/vault/                 # 自 diary_data 自动迁移（若存在）
+├── diary/YYYY/MM/<uuid>.md  # 灵感卡片（布局名保留）
+├── diary/YYYY/MM/<date>.day.json
+├── todos/todos.json
+├── assets/<uuid>/<image>
+└── manifest.json            # 可选
 ```
+
+Vault 内 `diary/` 路径是协议布局，**不要为改名而改掉**，以免 WebDAV 备份对不上。
 
 ## 环境
 
 - JDK 17
 - Android SDK（platform 34）
-- 模拟器请用 **Google APIs** 镜像（不要用 AOSP ATD）
+- 模拟器请用 **Google APIs** 镜像
 
 ## 构建
 
 ```bat
 cd android
 gradlew.bat installDebug
+gradlew.bat assembleRelease
 ```
+
+第一版 APK：
+
+- `app/build/outputs/apk/release/Sparkbox-1.0-release.apk`
+- `dist/Sparkbox-1.0.apk`
+- `dist/灵感匣-第一版.apk`

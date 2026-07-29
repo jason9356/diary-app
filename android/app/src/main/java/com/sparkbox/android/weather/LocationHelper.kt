@@ -1,4 +1,4 @@
-package com.personaldiary.android.weather
+package com.sparkbox.android.weather
 
 import android.Manifest
 import android.annotation.SuppressLint

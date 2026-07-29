@@ -5,7 +5,7 @@
 ## 目录
 
 ```text
-vault/   （Android: filesDir/diary_data）
+vault/   （Android: filesDir/vault；旧版 diary_data 会自动迁入）
   manifest.json
   diary/YYYY/MM/<uuid>.md
   diary/YYYY/MM/<date>.day.json   # 可选日上下文

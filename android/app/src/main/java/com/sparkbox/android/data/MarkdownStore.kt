@@ -1,4 +1,4 @@
-package com.personaldiary.android.data
+package com.sparkbox.android.data
 
 import java.io.File
 import java.util.UUID

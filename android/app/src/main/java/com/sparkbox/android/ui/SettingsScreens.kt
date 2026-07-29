@@ -1,4 +1,4 @@
-package com.personaldiary.android.ui
+package com.sparkbox.android.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -52,8 +52,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.personaldiary.android.ui.theme.AppFontFamily
-import com.personaldiary.android.ui.theme.ThemePalette
+import com.sparkbox.android.ui.theme.AppFontFamily
+import com.sparkbox.android.ui.theme.ThemePalette
 
 @Composable
 private fun themedFieldColors() = OutlinedTextFieldDefaults.colors(
@@ -190,7 +190,7 @@ internal fun SettingsSubScaffold(
 
 @Composable
 internal fun SettingsAppearanceScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onFontChange: (Float) -> Unit,
     onThemeMode: (String) -> Unit,
@@ -249,7 +249,7 @@ internal fun SettingsAppearanceScreen(
 
 @Composable
 internal fun SettingsSyncHubScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onOpenStorage: () -> Unit,
 ) {
@@ -276,7 +276,7 @@ internal fun SettingsSyncHubScreen(
 
 @Composable
 internal fun SettingsStorageScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onSelectTarget: (String) -> Unit,
     onOpenCloud: () -> Unit,
@@ -316,7 +316,7 @@ internal fun SettingsStorageScreen(
 
 @Composable
 internal fun SettingsCloudProviderScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onSelectProvider: (String) -> Unit,
     onOpenWebDav: () -> Unit,
@@ -357,7 +357,7 @@ internal fun SettingsCloudProviderScreen(
 
 @Composable
 internal fun SettingsWebDavScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onSave: (String, String, String, String) -> Unit,
     onSyncNow: () -> Unit,
@@ -414,7 +414,7 @@ internal fun SettingsWebDavScreen(
 
 @Composable
 internal fun SettingsCloudStubScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onSave: (String, String, String) -> Unit,
 ) {
@@ -497,7 +497,7 @@ private fun StorageTargetOption(
 
 @Composable
 internal fun SettingsAiScreen(
-    state: DiaryUiState,
+    state: SparkboxUiState,
     onBack: () -> Unit,
     onAiEnabled: (Boolean) -> Unit,
     onAiPreview: () -> Unit,
