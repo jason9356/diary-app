@@ -114,13 +114,64 @@ class SyncClient(
         }
     }
 
+    /** Sync native todos.json with LWW on document updated_at. */
+    fun syncTodos(todoStore: com.personaldiary.android.data.NativeTodoStore): SyncResult {
+        if (!prefs.enabled) return SyncResult(message = "")
+        return try {
+            checkProtocol()?.let { return SyncResult(message = it) }
+            val localRaw = todoStore.readRaw()
+            val localUpdated = todoStore.list().maxOfOrNull { it.updatedAt }.orEmpty()
+            val remote = fetchTodos()
+            when {
+                remote == null -> {
+                    pushTodos(localRaw, localUpdated)
+                    SyncResult(pushed = 1, message = "待办已上传")
+                }
+                remote.optString("updated_at") > localUpdated -> {
+                    todoStore.writeRaw(remote.optString("json", "[]"))
+                    SyncResult(pulled = 1, message = "待办已拉取")
+                }
+                remote.optString("updated_at") < localUpdated -> {
+                    pushTodos(localRaw, localUpdated)
+                    SyncResult(pushed = 1, message = "待办已推送")
+                }
+                else -> SyncResult(message = "待办已同步")
+            }
+        } catch (e: Exception) {
+            SyncResult(message = "待办同步失败：${e.message}")
+        }
+    }
+
+    private fun fetchTodos(): JSONObject? {
+        val req = authRequest("/todos").get().build()
+        http.newCall(req).execute().use { resp ->
+            if (resp.code == 404) return null
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("todos HTTP ${resp.code}: $text")
+            return JSONObject(text)
+        }
+    }
+
+    private fun pushTodos(json: String, updatedAt: String) {
+        val body = JSONObject()
+            .put("updated_at", updatedAt.ifBlank { java.time.OffsetDateTime.now().toString() })
+            .put("json", json)
+            .toString()
+            .toRequestBody("application/json".toMediaType())
+        val req = authRequest("/todos").put(body).build()
+        http.newCall(req).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("push todos HTTP ${resp.code}: $text")
+        }
+    }
+
     private fun checkProtocol(): String? {
         val req = Request.Builder().url(base() + "/health").get().build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return "health 失败 HTTP ${resp.code}"
             val payload = JSONObject(resp.body?.string().orEmpty())
-            if (payload.optInt("protocol", 0) != 2) {
-                return "同步服务不是 protocol v2，请升级服务端"
+            if (payload.optInt("protocol", 0) !in setOf(2, 3)) {
+                return "同步服务协议不兼容，请升级服务端"
             }
         }
         return null

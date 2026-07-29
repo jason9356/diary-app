@@ -6,6 +6,17 @@
 
 ### Added
 
+- **产品转向「灵感匣」**：灵感卡片（tags / 筛选）、本机待办、Obsidian 待办（S3）、AI 接口预留
+- **同步协议 v3**：health `protocol: 3`；`GET/PUT /v1/todos`；卡片 front matter `tags` / `pinned`
+- Android：底部灵感 / 待办 / 设置；扁平卡片流与标签筛选
+
+### Changed
+
+- README 与文档以 Android 灵感匣为主产品；桌面端降级为调试 / 备份
+- 同步服务标题与 health 标明 sparkbox
+
+### Added (earlier)
+
 - **同步协议 v2**：一天多条笔记，以 UUID `id` 为主键；日天气独立为 `.day.json`；API `/entries/{id}`、`/days/{date}`
 - **同步服务端**（`server/` FastAPI）：Bearer 鉴权、笔记/日上下文/assets、增量 `changes`、Docker Compose；已支持 v1→v2 迁移
 - 桌面：当日多笔记下拉 +「新建笔记」；按 id 同步
@@ -16,7 +27,7 @@
 - 电脑端 Open-Meteo 自动取天气（可配置 `weather_city`，可选手填）
 - **Android 客户端**（`android/`）：同设计语言、本地 Markdown 协议、自动定位天气、插图；与桌面代码隔离
 
-### Changed
+### Changed (earlier)
 
 - 同步从「一天一篇 / 按日期路由」升级为「一天多条 / 按 id 路由」（protocol 2）
 - 视觉重设：冷静纸色 + 苔绿点缀（取代奶油底/电蓝）

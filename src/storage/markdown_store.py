@@ -37,6 +37,8 @@ class EntryFrontMatter:
     created_at: str = ""
     updated_at: str = ""
     writing_duration_sec: int = 0
+    tags: list[str] | None = None
+    pinned: bool = False
     # Legacy v1 fields (read during migration only)
     location: str = ""
     weather: str = ""
@@ -90,6 +92,8 @@ class MarkdownStore:
         created_at: str = "",
         updated_at: str = "",
         writing_duration_sec: int = 0,
+        tags: list[str] | None = None,
+        pinned: bool = False,
     ) -> str:
         """Write markdown file. Returns relative path from diary_root."""
         rel = diary_md_relpath_for_id(entry_date, entry_id)
@@ -108,6 +112,11 @@ class MarkdownStore:
             lines.append(f"updated_at: {updated_at}")
         if writing_duration_sec:
             lines.append(f"writing_duration_sec: {writing_duration_sec}")
+        if tags:
+            joined = ", ".join(self._yaml_escape(t) for t in tags)
+            lines.append(f"tags: [{joined}]")
+        if pinned:
+            lines.append("pinned: true")
         lines.append("---")
         content = "\n".join(lines) + "\n\n" + body.rstrip() + "\n"
         path.write_text(content, encoding="utf-8")
@@ -209,6 +218,11 @@ class MarkdownStore:
             lines.append(f"updated_at: {fm.updated_at}")
         if fm.writing_duration_sec:
             lines.append(f"writing_duration_sec: {fm.writing_duration_sec}")
+        if fm.tags:
+            joined = ", ".join(self._yaml_escape(t) for t in fm.tags)
+            lines.append(f"tags: [{joined}]")
+        if fm.pinned:
+            lines.append("pinned: true")
         lines.append("---")
         return "\n".join(lines) + "\n\n" + body.rstrip() + "\n"
 
@@ -264,6 +278,7 @@ class MarkdownStore:
                 duration = int(float(data["writing_duration_sec"]))
             except ValueError:
                 duration = 0
+        tags = self._parse_tags(data.get("tags", ""))
         fm = EntryFrontMatter(
             date=data.get("date", ""),
             title=data.get("title", ""),
@@ -271,6 +286,8 @@ class MarkdownStore:
             created_at=data.get("created_at", ""),
             updated_at=data.get("updated_at", ""),
             writing_duration_sec=duration,
+            tags=tags or None,
+            pinned=str(data.get("pinned", "")).lower() == "true",
             location=data.get("location", ""),
             weather=data.get("weather", ""),
             temp_c=temp,
@@ -278,6 +295,20 @@ class MarkdownStore:
             context_updated_at=data.get("context_updated_at", ""),
         )
         return body, fm
+
+    @staticmethod
+    def _parse_tags(raw: str) -> list[str]:
+        s = (raw or "").strip()
+        if not s:
+            return []
+        if s.startswith("[") and s.endswith("]"):
+            s = s[1:-1]
+        out: list[str] = []
+        for part in s.split(","):
+            t = part.strip().strip('"').strip("'")
+            if t:
+                out.append(t)
+        return out
 
     @staticmethod
     def _yaml_escape(value: str) -> str:

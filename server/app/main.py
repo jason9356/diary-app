@@ -28,7 +28,7 @@ def _data_root() -> Path:
 
 
 store = ServerStore(_data_root())
-app = FastAPI(title="Diary Sync API", version="2.0.0")
+app = FastAPI(title="灵感匣 Sync API", version="3.0.0")
 
 
 class AssetMeta(BaseModel):
@@ -106,7 +106,54 @@ def _day_json(rec) -> dict:
 
 @app.get("/v1/health")
 def health() -> dict:
-    return {"ok": True, "revision": store.current_revision(), "protocol": 2}
+    return {
+        "ok": True,
+        "revision": store.current_revision(),
+        "protocol": 3,
+        "product": "sparkbox",
+    }
+
+
+class TodosPut(BaseModel):
+    updated_at: str = ""
+    items_json: str = Field(default="[]", alias="json")
+
+    model_config = {"populate_by_name": True}
+
+
+@app.get("/v1/todos", dependencies=[Depends(require_token)])
+def get_todos() -> dict:
+    path = store.root / "todos.json"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="not found")
+    raw = path.read_text(encoding="utf-8")
+    # File format: {"updated_at":"...","json":"[...]"} or bare array (legacy)
+    try:
+        import json as _json
+
+        obj = _json.loads(raw)
+        if isinstance(obj, dict) and "json" in obj:
+            return {
+                "updated_at": obj.get("updated_at", ""),
+                "json": obj["json"] if isinstance(obj["json"], str) else _json.dumps(obj["json"], ensure_ascii=False),
+            }
+        return {"updated_at": "", "json": raw}
+    except Exception:
+        return {"updated_at": "", "json": raw}
+
+
+@app.put("/v1/todos", dependencies=[Depends(require_token)])
+def put_todos(body: TodosPut) -> dict:
+    import json as _json
+
+    path = store.root / "todos.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "updated_at": body.updated_at,
+        "json": body.items_json,
+    }
+    path.write_text(_json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return payload
 
 
 @app.get("/v1/changes", dependencies=[Depends(require_token)])

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.DiaryAndroid" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:statusBarColor">#F2F4F1</item>
-        <item name="android:navigationBarColor">#F2F4F1</item>
+        <item name="android:statusBarColor">@color/slip_field</item>
+        <item name="android:navigationBarColor">@color/slip_field</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 </resources>

@@ -1,45 +1,32 @@
-# Android 客户端（日记）
+# Android 客户端（灵感匣）
 
-与桌面端（`src/` Python / PySide6）**同一产品的另一端**，代码隔离在 `android/`，互不混用。协议 **v2**：一天可多条笔记。
+主产品端。代码在 `android/`，与桌面 `src/` 隔离。协议 **v3**（兼容 v2 health）：灵感卡片 + 本机待办同步；Obsidian 待办经 S3。
 
 ## 设计
 
-- 视觉语言与桌面一致：冷静纸色 + 苔绿点缀 + 系统无衬线中文
-- **导航**：时间线（按日分组）→ 当日笔记列表 → 单条所见即所得编辑
-- **自动定位 + 天气**写入**日上下文**（`*.day.json`，`context_source=phone`）：当日尚无上下文时采集一次
-- OPPO / ColorOS 国行走系统 `LocationManager` 回退（不依赖 GMS）
-- 相册插图写入当前笔记 `assets/<id>/`，正文内联 Markdown 图片
+- 底部：**灵感** / **待办** / **设置**
+- 灵感：扁平卡片流、总数、搜索、日期与标签筛选
+- 待办：本机待办 + Obsidian 日记待办（对象存储）
+- 设置：同步、S3 / Obsidian 规则、字号、AI 预留开关
 
 ## 数据目录（应用私有存储）
 
 ```
 files/diary_data/
-├── diary/YYYY/MM/<uuid>.md
-├── diary/YYYY/MM/YYYY-MM-DD.day.json
+├── diary/YYYY/MM/<uuid>.md    # 灵感卡片
+├── todos/todos.json           # 本机待办
 └── assets/<uuid>/<image>
 ```
 
-启动时会把 v1 的 `YYYY-MM-DD.md` / `assets/YYYY-MM-DD/` 迁移为上述结构。
-
 ## 环境
 
-- JDK 17（已验证：`C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot`）
-- Android SDK（`%LOCALAPPDATA%\Android\Sdk`，platform 34）
-- 推荐 Android Studio 打开 **`android/`** 目录（不要打开仓库根当 Android 工程）
-- 开发期优先用模拟器联调；定型后再装真机
+- JDK 17
+- Android SDK（platform 34）
+- 模拟器请用 **Google APIs** 镜像（不要用 AOSP ATD）
 
 ## 构建
 
-在 `android/` 下：
-
 ```bat
-set JAVA_HOME=C:\Program Files\Microsoft\jdk-17.0.19.10-hotspot
-set ANDROID_HOME=%LOCALAPPDATA%\Android\Sdk
-gradlew.bat assembleDebug
+cd android
+gradlew.bat installDebug
 ```
-
-APK：`android/app/build/outputs/apk/debug/app-debug.apk`
-
-## 同步
-
-同步设置中填写 `https://diary.xybkwd.top` 与 Token（与桌面 `data/sync_secrets.json` 相同）。服务端须为 protocol 2。

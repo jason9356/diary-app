@@ -52,6 +52,7 @@ class DiaryRepository(dataRoot: File) {
             title = entryDate,
             createdAt = now,
             updatedAt = now,
+            tags = emptyList(),
         )
         return entry
     }
@@ -61,6 +62,19 @@ class DiaryRepository(dataRoot: File) {
             .filter { (_, date) -> date == entryDate }
             .map { (id, date) -> loadEntry(id, date) }
             .sortedByDescending { it.updatedAt }
+
+    /** Flat card list for the home screen (pinned first, then newest). */
+    fun listAllNotes(): List<DiaryEntry> =
+        md.listNoteIds()
+            .map { (id, date) -> loadEntry(id, date) }
+            .sortedWith(
+                compareByDescending<DiaryEntry> { it.pinned }
+                    .thenByDescending { it.entryDate }
+                    .thenByDescending { it.updatedAt },
+            )
+
+    fun allTags(): List<String> =
+        listAllNotes().flatMap { it.tags }.distinct().sorted()
 
     fun listTimeline(): List<TimelineDay> {
         val noteDates = md.listNoteIds().map { it.second }.toSet()
@@ -83,7 +97,14 @@ class DiaryRepository(dataRoot: File) {
         val id = entry.id.ifBlank { UUID.randomUUID().toString() }
         val created = entry.createdAt.ifBlank { now }
         val previous = if (md.exists(id, entry.entryDate)) loadEntry(id, entry.entryDate) else null
-        val updated = if (previous != null && previous.body == entry.body && previous.updatedAt.isNotBlank()) {
+        val tags = mergeTags(entry.tags, MarkdownImages.extractHashTags(entry.body))
+        val updated = if (
+            previous != null &&
+            previous.body == entry.body &&
+            previous.tags == tags &&
+            previous.pinned == entry.pinned &&
+            previous.updatedAt.isNotBlank()
+        ) {
             previous.updatedAt
         } else {
             now
@@ -96,6 +117,8 @@ class DiaryRepository(dataRoot: File) {
             createdAt = created,
             updatedAt = updated,
             writingDurationSec = entry.writingDurationSec,
+            tags = tags,
+            pinned = entry.pinned,
         )
         return entry.copy(
             id = id,
@@ -103,6 +126,8 @@ class DiaryRepository(dataRoot: File) {
             createdAt = created,
             updatedAt = updated,
             imageRels = assets.listRels(id),
+            tags = tags,
+            pinned = entry.pinned,
         )
     }
 
@@ -172,8 +197,13 @@ class DiaryRepository(dataRoot: File) {
             updatedAt = fm.updatedAt.ifBlank { now },
             writingDurationSec = fm.writingDurationSec,
             imageRels = assets.listRels(entryId),
+            tags = mergeTags(fm.tags, MarkdownImages.extractHashTags(body)),
+            pinned = fm.pinned,
         )
     }
+
+    private fun mergeTags(a: List<String>, b: List<String>): List<String> =
+        (a + b).map { it.trim() }.filter { it.isNotEmpty() }.distinct()
 
     private fun extractTitle(body: String, fallback: String): String {
         for (line in body.lineSequence()) {

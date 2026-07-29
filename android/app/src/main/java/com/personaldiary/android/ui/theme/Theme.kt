@@ -1,66 +1,75 @@
 package com.personaldiary.android.ui.theme
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Quiet ink — matches desktop styles.py
-val InkBg = Color(0xFFF2F4F1)
-val InkSurface = Color(0xFFFBFCFB)
-val InkSidebar = Color(0xFFE8EBE7)
-val InkBorder = Color(0xFFD2D8D2)
-val InkText = Color(0xFF1B221E)
-val InkMuted = Color(0xFF6A746C)
-val InkAccent = Color(0xFF3F6B58)
-val InkAccentSoft = Color(0xFFDCE8E1)
-val InkHover = Color(0xFFDDE3DD)
+// 青笺 — Slip / cyan paper
+val SlipField = Color(0xFFF5F7F8)
+val SlipFieldDeep = Color(0xFFEEF2F4)
+val SlipCard = Color(0xFFFFFFFF)
+val SlipInk = Color(0xFF111827)
+val SlipMute = Color(0xFF6B7280)
+val SlipTeal = Color(0xFF3A5F5A)
+val SlipTealSoft = Color(0xFFD9E5E2)
+val SlipLine = Color(0xFFE5E7EB)
 
-val InkBgDark = Color(0xFF121614)
-val InkSurfaceDark = Color(0xFF1A1F1C)
-val InkTextDark = Color(0xFFE6EBE7)
-val InkMutedDark = Color(0xFF8E9891)
-val InkAccentDark = Color(0xFF7FAE97)
-val InkAccentSoftDark = Color(0xFF24332C)
-val InkBorderDark = Color(0xFF2A322D)
+/** Call-site aliases during transition from 匣光. */
+val SparkCopper = SlipTeal
+val SparkFieldTop = SlipField
+val SparkFieldBrush = Brush.verticalGradient(listOf(SlipField, SlipFieldDeep))
+val InkAccent = SlipTeal
 
-/** Unified UI/body sans — system CJK-capable sans (no embedded WenKai). */
-val AppFontFamily: FontFamily = FontFamily.SansSerif
+val SlipFieldDark = Color(0xFF12161A)
+val SlipFieldDeepDark = Color(0xFF0E1114)
+val SlipCardDark = Color(0xFF1A1F24)
+val SlipInkDark = Color(0xFFE8EAED)
+val SlipMuteDark = Color(0xFF9AA0A8)
+val SlipTealDark = Color(0xFF7FA39C)
+val SlipTealSoftDark = Color(0xFF243836)
+val SlipLineDark = Color(0xFF2A3138)
+
+val SparkFieldBrushDark = Brush.verticalGradient(listOf(SlipFieldDark, SlipFieldDeepDark))
 
 private val LightColors = lightColorScheme(
-    primary = InkAccent,
+    primary = SlipTeal,
     onPrimary = Color.White,
-    secondary = InkAccent,
-    background = InkBg,
-    onBackground = InkText,
-    surface = InkSurface,
-    onSurface = InkText,
-    surfaceVariant = InkSidebar,
-    onSurfaceVariant = InkMuted,
-    outline = InkBorder,
-    primaryContainer = InkAccentSoft,
-    onPrimaryContainer = InkAccent,
+    secondary = SlipTeal,
+    background = SlipField,
+    onBackground = SlipInk,
+    surface = SlipCard,
+    onSurface = SlipInk,
+    surfaceVariant = SlipFieldDeep,
+    onSurfaceVariant = SlipMute,
+    outline = SlipLine,
+    primaryContainer = SlipTealSoft,
+    onPrimaryContainer = SlipTeal,
 )
 
 private val DarkColors = darkColorScheme(
-    primary = InkAccentDark,
-    onPrimary = InkBgDark,
-    secondary = InkAccentDark,
-    background = InkBgDark,
-    onBackground = InkTextDark,
-    surface = InkSurfaceDark,
-    onSurface = InkTextDark,
-    surfaceVariant = Color(0xFF0F1311),
-    onSurfaceVariant = InkMutedDark,
-    outline = InkBorderDark,
-    primaryContainer = InkAccentSoftDark,
-    onPrimaryContainer = InkAccentDark,
+    primary = SlipTealDark,
+    onPrimary = SlipFieldDark,
+    secondary = SlipTealDark,
+    background = SlipFieldDark,
+    onBackground = SlipInkDark,
+    surface = SlipCardDark,
+    onSurface = SlipInkDark,
+    surfaceVariant = SlipFieldDeepDark,
+    onSurfaceVariant = SlipMuteDark,
+    outline = SlipLineDark,
+    primaryContainer = SlipTealSoftDark,
+    onPrimaryContainer = SlipTealDark,
 )
 
 @Composable
@@ -71,9 +80,9 @@ fun DiaryTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
         typography = MaterialTheme.typography.copy(
             displayLarge = TextStyle(
                 fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                color = colors.onBackground,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 36.sp,
+                color = colors.primary,
             ),
             headlineMedium = TextStyle(
                 fontFamily = AppFontFamily,
@@ -82,12 +91,12 @@ fun DiaryTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
             ),
             titleLarge = TextStyle(
                 fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 22.sp,
             ),
             titleMedium = TextStyle(
                 fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 16.sp,
             ),
             bodyLarge = TextStyle(
@@ -104,7 +113,7 @@ fun DiaryTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
             ),
             labelLarge = TextStyle(
                 fontFamily = AppFontFamily,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 fontSize = 14.sp,
             ),
             labelMedium = TextStyle(
@@ -112,7 +121,27 @@ fun DiaryTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable 
                 fontWeight = FontWeight.Normal,
                 fontSize = 13.sp,
             ),
+            labelSmall = TextStyle(
+                fontFamily = AppFontFamily,
+                fontWeight = FontWeight.Normal,
+                fontSize = 11.sp,
+            ),
         ),
         content = content,
     )
+}
+
+@Composable
+fun SlipFieldBackground(
+    modifier: Modifier = Modifier,
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(if (darkTheme) SparkFieldBrushDark else SparkFieldBrush),
+    ) {
+        content()
+    }
 }

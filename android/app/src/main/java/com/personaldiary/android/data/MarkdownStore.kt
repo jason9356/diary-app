@@ -17,6 +17,8 @@ class MarkdownStore(
         val createdAt: String = "",
         val updatedAt: String = "",
         val writingDurationSec: Int = 0,
+        val tags: List<String> = emptyList(),
+        val pinned: Boolean = false,
         // Legacy v1 (migration only)
         val location: String = "",
         val weather: String = "",
@@ -75,6 +77,8 @@ class MarkdownStore(
         createdAt: String = "",
         updatedAt: String = "",
         writingDurationSec: Int = 0,
+        tags: List<String> = emptyList(),
+        pinned: Boolean = false,
     ) {
         val file = pathFor(entryId, entryDate)
         file.parentFile?.mkdirs()
@@ -87,6 +91,8 @@ class MarkdownStore(
         if (createdAt.isNotBlank()) lines += "created_at: $createdAt"
         if (updatedAt.isNotBlank()) lines += "updated_at: $updatedAt"
         if (writingDurationSec > 0) lines += "writing_duration_sec: $writingDurationSec"
+        if (tags.isNotEmpty()) lines += "tags: [${tags.joinToString(", ") { yamlEscape(it) }}]"
+        if (pinned) lines += "pinned: true"
         lines += "---"
         val content = lines.joinToString("\n") + "\n\n" + body.trimEnd() + "\n"
         file.writeText(content, Charsets.UTF_8)
@@ -172,6 +178,8 @@ class MarkdownStore(
             createdAt = map["created_at"].orEmpty(),
             updatedAt = map["updated_at"].orEmpty(),
             writingDurationSec = duration,
+            tags = parseTags(map["tags"].orEmpty()),
+            pinned = map["pinned"].orEmpty().equals("true", ignoreCase = true),
             location = map["location"].orEmpty(),
             weather = map["weather"].orEmpty(),
             tempC = temp,
@@ -191,8 +199,25 @@ class MarkdownStore(
         if (fm.createdAt.isNotBlank()) lines += "created_at: ${fm.createdAt}"
         if (fm.updatedAt.isNotBlank()) lines += "updated_at: ${fm.updatedAt}"
         if (fm.writingDurationSec > 0) lines += "writing_duration_sec: ${fm.writingDurationSec}"
+        if (fm.tags.isNotEmpty()) {
+            lines += "tags: [${fm.tags.joinToString(", ") { yamlEscape(it) }}]"
+        }
+        if (fm.pinned) lines += "pinned: true"
         lines += "---"
         return lines.joinToString("\n") + "\n\n" + body.trimEnd() + "\n"
+    }
+
+    private fun parseTags(raw: String): List<String> {
+        val s = raw.trim()
+        if (s.isEmpty()) return emptyList()
+        val inner = when {
+            s.startsWith("[") && s.endsWith("]") -> s.substring(1, s.length - 1)
+            else -> s
+        }
+        return inner.split(',')
+            .map { it.trim().trim('"').trim('\'') }
+            .filter { it.isNotEmpty() }
+            .distinct()
     }
 
     private fun extractLegacyContext(text: String, entryDate: String): DayContext? {

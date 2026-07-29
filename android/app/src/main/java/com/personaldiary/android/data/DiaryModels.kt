@@ -3,6 +3,7 @@ package com.personaldiary.android.data
 import java.time.LocalDate
 import java.time.OffsetDateTime
 
+/** Inspiration card (formerly diary note). Stored as Markdown with UUID id. */
 data class DiaryEntry(
     val id: String,
     val entryDate: String,
@@ -12,7 +13,11 @@ data class DiaryEntry(
     val updatedAt: String = DiaryDates.nowIso(),
     val writingDurationSec: Int = 0,
     val imageRels: List<String> = emptyList(),
+    val tags: List<String> = emptyList(),
+    val pinned: Boolean = false,
 )
+
+typealias InspirationCard = DiaryEntry
 
 data class DayContext(
     val date: String,
@@ -51,6 +56,26 @@ data class TimelineDay(
     val notes: List<DiaryEntry>,
 )
 
+data class NativeTodo(
+    val id: String,
+    val text: String,
+    val done: Boolean = false,
+    val createdAt: String = DiaryDates.nowIso(),
+    val updatedAt: String = DiaryDates.nowIso(),
+)
+
+data class ObsidianTodo(
+    val filePath: String,
+    val lineIndex: Int,
+    val originalLine: String,
+    val content: String,
+    val indent: String,
+    val number: String,
+    val tagInner: String,
+) {
+    val key: String get() = "$filePath#$lineIndex"
+}
+
 object DiaryDates {
     fun today(): String = LocalDate.now().toString()
 
@@ -88,4 +113,21 @@ object MarkdownImages {
             else -> text + "\n\n" + images.joinToString("\n\n")
         }
     }
+
+    /** Pull #tags from body lines (not in code fences). */
+    fun extractHashTags(body: String): List<String> {
+        val tags = linkedSetOf<String>()
+        var inFence = false
+        for (line in body.lineSequence()) {
+            if (line.trimStart().startsWith("```") || line.trimStart().startsWith("~~~")) {
+                inFence = !inFence
+                continue
+            }
+            if (inFence) continue
+            HASH_TAG.findAll(line).forEach { tags += it.groupValues[1] }
+        }
+        return tags.toList()
+    }
+
+    private val HASH_TAG = Regex("""(?<!\w)#([\w\u4e00-\u9fff\-]+)""")
 }
