@@ -53,6 +53,7 @@ import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PhoneAndroid
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.WbCloudy
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -395,6 +396,11 @@ fun SparkboxApp(viewModel: SparkboxViewModel) {
                             navController.popBackStack()
                         },
                         onEdit = { navController.navigate(Routes.edit(entry.id)) },
+                        onDelete = {
+                            viewModel.deleteNote(entry.id) {
+                                navController.popBackStack(Routes.Home, inclusive = false)
+                            }
+                        },
                         onPickImage = { uri -> viewModel.addImage(uri) { } },
                     )
                 }
@@ -419,6 +425,11 @@ fun SparkboxApp(viewModel: SparkboxViewModel) {
                         onTitleChange = viewModel::onTitleChange,
                         onBodyChange = viewModel::onBodyChange,
                         onToggleTag = viewModel::toggleTag,
+                        onDelete = {
+                            viewModel.deleteNote(entry.id) {
+                                navController.popBackStack(Routes.Home, inclusive = false)
+                            }
+                        },
                         onPickImage = { uri, insert ->
                             viewModel.addImage(uri, appendToBody = false, onInserted = insert)
                         },
@@ -845,11 +856,32 @@ private fun NoteReadScreen(
     resolveAsset: (String) -> File?,
     onBack: () -> Unit,
     onEdit: () -> Unit,
+    onDelete: () -> Unit,
     onPickImage: (android.net.Uri) -> Unit,
 ) {
+    var confirmDelete by remember { mutableStateOf(false) }
     val imageLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent(),
     ) { uri -> if (uri != null) onPickImage(uri) }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除灵感") },
+            text = { Text("删除后无法恢复（含插图）。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        onDelete()
+                    },
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+            },
+        )
+    }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -883,6 +915,9 @@ private fun NoteReadScreen(
                     }
                     TabActionIcon(onClick = onEdit) {
                         Icon(Icons.Outlined.Edit, contentDescription = "编辑", modifier = Modifier.size(24.dp))
+                    }
+                    TabActionIcon(onClick = { confirmDelete = true }) {
+                        Icon(Icons.Outlined.Delete, contentDescription = "删除", modifier = Modifier.size(24.dp))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -1461,6 +1496,7 @@ private fun NoteEditorScreen(
     onTitleChange: (String) -> Unit,
     onBodyChange: (String) -> Unit,
     onToggleTag: (String) -> Unit,
+    onDelete: () -> Unit,
     onPickImage: (android.net.Uri, (String) -> Unit) -> Unit,
     onSync: () -> Unit,
 ) {
@@ -1473,12 +1509,32 @@ private fun NoteEditorScreen(
         mutableStateOf(MarkdownImages.stripForDisplay(entry.body))
     }
     var lastSavedBody by remember(entry.id) { mutableStateOf(entry.body) }
+    var confirmDelete by remember { mutableStateOf(false) }
     val cursorBrush = SolidColor(MaterialTheme.colorScheme.primary)
     val categoryChoices = remember(allTags, entry.tags) {
         (CATEGORY_PRESETS + allTags + entry.tags)
             .map { it.trim() }
             .filter { it.isNotEmpty() }
             .distinct()
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            title = { Text("删除灵感") },
+            text = { Text("删除后无法恢复（含插图）。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmDelete = false
+                        onDelete()
+                    },
+                ) { Text("删除") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("取消") }
+            },
+        )
     }
 
     LaunchedEffect(entry.id, entry.body) {
@@ -1536,6 +1592,13 @@ private fun NoteEditorScreen(
                     }
                 },
                 actions = {
+                    TabActionIcon(onClick = { confirmDelete = true }) {
+                        Icon(
+                            Icons.Outlined.Delete,
+                            contentDescription = "删除",
+                            modifier = Modifier.size(24.dp),
+                        )
+                    }
                     TabActionIcon(onClick = { imageLauncher.launch("image/*") }) {
                         Icon(
                             Icons.Outlined.AddPhotoAlternate,

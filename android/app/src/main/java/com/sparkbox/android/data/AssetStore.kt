@@ -45,4 +45,11 @@ class AssetStore(private val assetsRoot: File) {
     }
 
     fun assetFile(entryId: String, name: String): File = File(dirFor(entryId), name)
+
+    /** Remove all files under assets/<entryId>/ and the folder itself. */
+    fun deleteEntry(entryId: String) {
+        val dir = File(assetsRoot, entryId)
+        if (!dir.exists()) return
+        dir.walkBottomUp().forEach { it.delete() }
+    }
 }

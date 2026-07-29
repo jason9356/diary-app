@@ -196,6 +196,22 @@ class SparkboxRepository(dataRoot: File) {
         return assets.saveFromUri(context, entryId, uri)
     }
 
+    /** Delete note markdown + assets. Returns relative vault paths that were removed (for cloud DELETE). */
+    fun deleteNote(entryId: String): List<String> {
+        val date = md.dateForId(entryId) ?: return emptyList()
+        val rels = mutableListOf<String>()
+        val mdFile = md.pathFor(entryId, date)
+        if (mdFile.isFile) {
+            rels += mdFile.relativeTo(dataRoot).path.replace('\\', '/')
+        }
+        for (f in assets.listFiles(entryId)) {
+            rels += f.relativeTo(dataRoot).path.replace('\\', '/')
+        }
+        md.delete(entryId, date)
+        assets.deleteEntry(entryId)
+        return rels
+    }
+
     fun absoluteAsset(rel: String): File = assets.absolute(rel)
 
     fun assetFile(entryId: String, name: String): File = assets.assetFile(entryId, name)

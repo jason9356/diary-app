@@ -73,6 +73,18 @@ class WebDavClient(private val config: WebDavConfig) {
         }
     }
 
+    fun deleteFile(relPath: String) {
+        val req = Request.Builder()
+            .url(urlFor(relPath))
+            .header("Authorization", auth)
+            .delete()
+            .build()
+        http.newCall(req).execute().use { resp ->
+            if (resp.isSuccessful || resp.code == 404) return
+            error("WebDAV DELETE ${resp.code}")
+        }
+    }
+
     fun getFile(relPath: String): ByteArray? {
         val req = Request.Builder()
             .url(urlFor(relPath))
@@ -239,21 +251,42 @@ class VaultMirror(
     private val stateFile = File(dataRoot, ".webdav-state.json")
     private val skewMs = 2_000L
 
+    /** Remember paths to DELETE on next sync (and try immediately when client is available). */
+    fun queueRemoteDeletes(paths: List<String>) {
+        if (paths.isEmpty()) return
+        val (fingerprints, deleted) = loadStateBundle()
+        deleted.addAll(paths)
+        saveStateBundle(fingerprints, deleted)
+    }
+
     fun sync(): VaultMirrorResult {
         return try {
             client.ensureRoot()
             var up = 0
             var down = 0
             var skipped = 0
-            val state = loadState()
+            var removed = 0
+            val (state, pendingDelete) = loadStateBundle()
             val remote = client.listResources()
                 .filter { isVaultPath(it.path) }
                 .associateBy { it.path }
             val localPaths = listLocalRelPaths()
             val seen = linkedSetOf<String>()
 
+            val stillPending = linkedSetOf<String>()
+            for (rel in pendingDelete) {
+                try {
+                    client.deleteFile(rel)
+                    state.remove(rel)
+                    removed++
+                } catch (_: Exception) {
+                    stillPending += rel
+                }
+            }
+
             for (rel in localPaths) {
                 seen += rel
+                if (rel in stillPending) stillPending.remove(rel)
                 val file = File(dataRoot, rel)
                 if (!file.isFile) continue
                 val localMtime = file.lastModified()
@@ -295,9 +328,20 @@ class VaultMirror(
                 }
             }
 
-            for ((rel, rem) in remote) {
+            for ((rel, _) in remote) {
                 if (rel in seen) continue
                 if (!isVaultPath(rel)) continue
+                if (rel in stillPending || rel in pendingDelete) {
+                    try {
+                        client.deleteFile(rel)
+                        state.remove(rel)
+                        removed++
+                        stillPending.remove(rel)
+                    } catch (_: Exception) {
+                        stillPending += rel
+                    }
+                    continue
+                }
                 val local = File(dataRoot, rel)
                 if (local.isFile) continue
                 val bytes = client.getFile(rel) ?: continue
@@ -318,12 +362,13 @@ class VaultMirror(
                 )
                 up++
             }
-            saveState(state)
+            saveStateBundle(state, stillPending)
             VaultMirrorResult(
                 uploaded = up,
                 downloaded = down,
                 skipped = skipped,
-                message = "云盘增量同步：上传 $up，下载 $down，跳过 $skipped",
+                message = "云盘增量同步：上传 $up，下载 $down，跳过 $skipped" +
+                    if (removed > 0) "，删除 $removed" else "",
             )
         } catch (e: Exception) {
             VaultMirrorResult(message = "云盘同步失败：${e.message}")
@@ -376,11 +421,11 @@ class VaultMirror(
 
     private data class Fingerprint(val mtime: Long, val size: Long, val hash: String)
 
-    private fun loadState(): MutableMap<String, Fingerprint> {
-        if (!stateFile.isFile) return mutableMapOf()
+    private fun loadStateBundle(): Pair<MutableMap<String, Fingerprint>, MutableSet<String>> {
+        if (!stateFile.isFile) return mutableMapOf<String, Fingerprint>() to mutableSetOf()
         return try {
             val root = JSONObject(stateFile.readText(Charsets.UTF_8))
-            val files = root.optJSONObject("files") ?: return mutableMapOf()
+            val files = root.optJSONObject("files") ?: JSONObject()
             val out = mutableMapOf<String, Fingerprint>()
             val keys = files.keys()
             while (keys.hasNext()) {
@@ -392,13 +437,24 @@ class VaultMirror(
                     hash = obj.optString("hash"),
                 )
             }
-            out
+            val deleted = mutableSetOf<String>()
+            val arr = root.optJSONArray("deleted")
+            if (arr != null) {
+                for (i in 0 until arr.length()) {
+                    val p = arr.optString(i)
+                    if (p.isNotBlank()) deleted += p
+                }
+            }
+            out to deleted
         } catch (_: Exception) {
-            mutableMapOf()
+            mutableMapOf<String, Fingerprint>() to mutableSetOf()
         }
     }
 
-    private fun saveState(state: Map<String, Fingerprint>) {
+    private fun saveStateBundle(
+        state: Map<String, Fingerprint>,
+        deleted: Collection<String>,
+    ) {
         try {
             val files = JSONObject()
             for ((path, fp) in state) {
@@ -410,7 +466,15 @@ class VaultMirror(
                         .put("hash", fp.hash),
                 )
             }
-            stateFile.writeText(JSONObject().put("files", files).toString(), Charsets.UTF_8)
+            val delArr = org.json.JSONArray()
+            deleted.forEach { delArr.put(it) }
+            stateFile.writeText(
+                JSONObject()
+                    .put("files", files)
+                    .put("deleted", delArr)
+                    .toString(),
+                Charsets.UTF_8,
+            )
         } catch (_: Exception) {
             // local cache only
         }

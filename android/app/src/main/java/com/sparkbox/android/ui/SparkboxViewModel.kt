@@ -287,6 +287,49 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun deleteNote(entryId: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val removedPaths = withContext(Dispatchers.IO) {
+                val paths = repo.deleteNote(entryId)
+                queueCloudDeletes(paths)
+                paths
+            }
+            _state.update { state ->
+                val notes = state.notes.filter { it.id != entryId }
+                state.copy(
+                    entry = if (state.entry?.id == entryId) null else state.entry,
+                    notes = notes,
+                    allTags = notes.flatMap { n -> n.tags }.distinct().sorted(),
+                    filteredNotes = applyFilters(
+                        notes,
+                        state.filterQuery,
+                        state.filterDate,
+                        state.filterTag,
+                    ),
+                    status = if (removedPaths.isEmpty()) "未找到该灵感" else "",
+                )
+            }
+            onDone()
+        }
+    }
+
+    private fun queueCloudDeletes(paths: List<String>) {
+        if (paths.isEmpty()) return
+        if (appPrefs.storageTarget != "cloud" || appPrefs.cloudProvider != "webdav") return
+        val cfg = WebDavConfig(
+            baseUrl = appPrefs.webdavUrl,
+            username = appPrefs.webdavUser,
+            password = appPrefs.webdavPass,
+            rootPath = appPrefs.webdavRoot,
+        )
+        if (!cfg.enabled) return
+        try {
+            VaultMirror(appCtx.repository.dataRoot, WebDavClient(cfg)).queueRemoteDeletes(paths)
+        } catch (_: Exception) {
+            // Local delete already succeeded; remote catch-up on next sync.
+        }
+    }
+
     fun setEditorFontSp(sp: Float) {
         appPrefs.editorFontSp = sp
         _state.update { it.copy(editorFontSp = appPrefs.editorFontSp) }

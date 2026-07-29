@@ -138,6 +138,14 @@ class MarkdownStore(
         if (map.remove(entryId) != null) persistIndex(map)
     }
 
+    /** Delete markdown file and drop id→date index entry. */
+    fun delete(entryId: String, entryDate: String): Boolean {
+        val file = pathFor(entryId, entryDate)
+        val removed = if (file.isFile) file.delete() else false
+        indexRemove(entryId)
+        return removed || !file.exists()
+    }
+
     fun readBody(entryId: String, entryDate: String): String {
         val f = pathFor(entryId, entryDate)
         if (!f.isFile) return ""
