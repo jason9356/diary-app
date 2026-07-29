@@ -35,6 +35,7 @@ import kotlinx.coroutines.withContext
 data class SparkboxUiState(
     val entry: SparkEntry? = null,
     val dayContext: DayContext = DayContext(date = SparkDates.today()),
+    val dayContexts: Map<String, DayContext> = emptyMap(),
     val notes: List<SparkEntry> = emptyList(),
     val filteredNotes: List<SparkEntry> = emptyList(),
     val allTags: List<String> = emptyList(),
@@ -115,16 +116,44 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshCards() {
         viewModelScope.launch {
-            val notes = withContext(Dispatchers.IO) { repo.listAllNotes() }
+            val (notes, contexts) = withContext(Dispatchers.IO) {
+                val notes = repo.listAllNotes()
+                val contexts = notes.map { it.entryDate }.distinct()
+                    .associateWith { repo.getDayContext(it) }
+                notes to contexts
+            }
             _state.update {
                 it.copy(
                     notes = notes,
+                    dayContexts = contexts,
                     allTags = notes.flatMap { n -> n.tags }.distinct().sorted(),
                     filteredNotes = applyFilters(notes, it.filterQuery, it.filterDate, it.filterTag),
                 )
             }
         }
     }
+
+    /** Patch one card into the in-memory list — avoids re-scanning the vault on every save. */
+    private fun upsertCard(saved: SparkEntry, context: DayContext? = null) {
+        _state.update { state ->
+            val notes = sortNotes(state.notes.filter { it.id != saved.id } + saved)
+            val contexts = state.dayContexts.toMutableMap()
+            if (context != null) contexts[saved.entryDate] = context
+            state.copy(
+                notes = notes,
+                dayContexts = contexts,
+                allTags = notes.flatMap { n -> n.tags }.distinct().sorted(),
+                filteredNotes = applyFilters(notes, state.filterQuery, state.filterDate, state.filterTag),
+            )
+        }
+    }
+
+    private fun sortNotes(notes: List<SparkEntry>): List<SparkEntry> =
+        notes.sortedWith(
+            compareByDescending<SparkEntry> { it.pinned }
+                .thenByDescending { it.entryDate }
+                .thenByDescending { it.updatedAt },
+        )
 
     fun refreshNotes() = refreshCards()
 
@@ -206,7 +235,7 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
     fun createNote(entryDate: String): String {
         val entry = repo.createNote(entryDate)
         openNote(entry.id)
-        refreshCards()
+        upsertCard(entry)
         return entry.id
     }
 
@@ -254,7 +283,7 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
             val current = _state.value.entry ?: return@launch
             val saved = withContext(Dispatchers.IO) { repo.save(current) }
             _state.update { it.copy(entry = saved, status = "") }
-            refreshCards()
+            upsertCard(saved)
         }
     }
 
@@ -381,7 +410,7 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
                 }
                 onInserted(rel)
                 _state.update { it.copy(entry = saved, status = "") }
-                refreshCards()
+                upsertCard(saved)
             } catch (e: Exception) {
                 _state.update { it.copy(status = "插图失败：${e.message}") }
             }
@@ -433,7 +462,13 @@ class SparkboxViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             val ctx = repo.saveContext(entryDate, snap, force = existing.contextSource != "phone")
-            _state.update { it.copy(dayContext = ctx, weatherLoading = false) }
+            _state.update {
+                it.copy(
+                    dayContext = ctx,
+                    dayContexts = it.dayContexts + (entryDate to ctx),
+                    weatherLoading = false,
+                )
+            }
         }
     }
 

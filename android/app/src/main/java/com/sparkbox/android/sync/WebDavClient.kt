@@ -5,7 +5,12 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONObject
 import java.io.File
+import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.TimeUnit
 
 data class WebDavConfig(
@@ -17,6 +22,13 @@ data class WebDavConfig(
     val enabled: Boolean
         get() = baseUrl.isNotBlank() && username.isNotBlank()
 }
+
+data class DavResource(
+    val path: String,
+    val lastModifiedMs: Long = 0L,
+    val etag: String = "",
+    val isCollection: Boolean = false,
+)
 
 /**
  * Minimal WebDAV client for Vault mirror (PUT/GET/MKCOL/PROPFIND).
@@ -74,12 +86,17 @@ class WebDavClient(private val config: WebDavConfig) {
         }
     }
 
-    fun listRelativePaths(prefix: String = ""): List<String> {
+    fun listResources(prefix: String = ""): List<DavResource> {
         val href = urlFor(prefix) + if (prefix.isNotEmpty() && !prefix.endsWith("/")) "/" else ""
         val propfind = """
             <?xml version="1.0" encoding="utf-8" ?>
             <d:propfind xmlns:d="DAV:">
-              <d:prop><d:displayname/><d:getlastmodified/><d:resourcetype/></d:prop>
+              <d:prop>
+                <d:displayname/>
+                <d:getlastmodified/>
+                <d:getetag/>
+                <d:resourcetype/>
+              </d:prop>
             </d:propfind>
         """.trimIndent().toRequestBody("application/xml".toMediaType())
         val req = Request.Builder()
@@ -92,39 +109,90 @@ class WebDavClient(private val config: WebDavConfig) {
             if (!resp.isSuccessful && resp.code != 207) {
                 error("WebDAV PROPFIND ${resp.code}")
             }
-            val xml = resp.body?.string().orEmpty()
-            return parseHrefList(xml, rootUrl())
+            return parseResponses(resp.body?.string().orEmpty(), rootUrl())
         }
     }
 
-    private fun parseHrefList(xml: String, root: String): List<String> {
+    /** Legacy path-only list. */
+    fun listRelativePaths(prefix: String = ""): List<String> =
+        listResources(prefix).filter { !it.isCollection }.map { it.path }
+
+    private fun parseResponses(xml: String, root: String): List<DavResource> {
         val rootNorm = root.trimEnd('/') + "/"
-        val hrefRe = Regex("""<(?:D:)?href>([^<]+)</(?:D:)?href>""", RegexOption.IGNORE_CASE)
-        return hrefRe.findAll(xml).mapNotNull { m ->
-            var href = m.groupValues[1].trim()
-            // Decode basic %20
-            href = href.replace("%20", " ")
-            val abs = when {
-                href.startsWith("http") -> href
-                href.startsWith("/") -> {
-                    val baseHost = config.baseUrl.trim().trimEnd('/').substringBefore("/dav")
-                        .substringBefore("/remote.php")
-                    // Prefer absolute against baseUrl host
-                    val origin = Regex("""^(https?://[^/]+)""").find(config.baseUrl)?.groupValues?.get(1).orEmpty()
-                    origin + href
-                }
-                else -> return@mapNotNull null
+        val blocks = Regex(
+            """<(?:D:)?response\b[^>]*>([\s\S]*?)</(?:D:)?response>""",
+            RegexOption.IGNORE_CASE,
+        ).findAll(xml)
+        val out = mutableListOf<DavResource>()
+        for (block in blocks) {
+            val body = block.groupValues[1]
+            val href = Regex(
+                """<(?:D:)?href>([^<]+)</(?:D:)?href>""",
+                RegexOption.IGNORE_CASE,
+            ).find(body)?.groupValues?.get(1)?.trim()?.replace("%20", " ") ?: continue
+            val abs = resolveHref(href) ?: continue
+            val rel = relativePath(abs, rootNorm) ?: continue
+            val isCollection = Regex(
+                """<(?:D:)?collection\s*/>""",
+                RegexOption.IGNORE_CASE,
+            ).containsMatchIn(body) || rel.endsWith("/")
+            if (isCollection || rel.isBlank()) continue
+            val modifiedRaw = Regex(
+                """<(?:D:)?getlastmodified>([^<]+)</(?:D:)?getlastmodified>""",
+                RegexOption.IGNORE_CASE,
+            ).find(body)?.groupValues?.get(1)?.trim().orEmpty()
+            val etag = Regex(
+                """<(?:D:)?getetag>([^<]+)</(?:D:)?getetag>""",
+                RegexOption.IGNORE_CASE,
+            ).find(body)?.groupValues?.get(1)?.trim().orEmpty()
+            out += DavResource(
+                path = rel.trimEnd('/'),
+                lastModifiedMs = parseHttpDate(modifiedRaw),
+                etag = etag.trim('"'),
+                isCollection = false,
+            )
+        }
+        return out.distinctBy { it.path }
+    }
+
+    private fun resolveHref(href: String): String? {
+        return when {
+            href.startsWith("http") -> href
+            href.startsWith("/") -> {
+                val origin = Regex("""^(https?://[^/]+)""").find(config.baseUrl)?.groupValues?.get(1)
+                    .orEmpty()
+                if (origin.isBlank()) null else origin + href
             }
-            if (!abs.startsWith(rootNorm) && abs.trimEnd('/') != root.trimEnd('/')) {
-                // try path-only match after root path segment
-                val rootPath = "/" + config.rootPath.trim().trim('/') + "/"
-                val idx = abs.indexOf(rootPath)
-                if (idx < 0) return@mapNotNull null
-                val rel = abs.substring(idx + rootPath.length).trimStart('/')
-                return@mapNotNull rel.takeIf { it.isNotBlank() && !it.endsWith("/") }
+            else -> null
+        }
+    }
+
+    private fun relativePath(abs: String, rootNorm: String): String? {
+        if (abs.startsWith(rootNorm) || abs.trimEnd('/') == rootNorm.trimEnd('/')) {
+            return abs.removePrefix(rootNorm).trimStart('/').takeIf { it.isNotBlank() }
+        }
+        val rootPath = "/" + config.rootPath.trim().trim('/') + "/"
+        val idx = abs.indexOf(rootPath)
+        if (idx < 0) return null
+        return abs.substring(idx + rootPath.length).trimStart('/').takeIf { it.isNotBlank() }
+    }
+
+    private fun parseHttpDate(raw: String): Long {
+        if (raw.isBlank()) return 0L
+        val formats = listOf(
+            "EEE, dd MMM yyyy HH:mm:ss zzz",
+            "EEE, dd MMM yyyy HH:mm:ss Z",
+        )
+        for (pattern in formats) {
+            try {
+                val fmt = SimpleDateFormat(pattern, Locale.US)
+                fmt.timeZone = TimeZone.getTimeZone("GMT")
+                return fmt.parse(raw)?.time ?: continue
+            } catch (_: Exception) {
+                // try next
             }
-            abs.removePrefix(rootNorm).trimStart('/').takeIf { it.isNotBlank() && !it.endsWith("/") }
-        }.distinct().toList()
+        }
+        return 0L
     }
 
     private fun ensureParentDirs(relPath: String) {
@@ -149,9 +217,7 @@ class WebDavClient(private val config: WebDavConfig) {
             .method("MKCOL", ByteArray(0).toRequestBody(null))
             .build()
         http.newCall(req).execute().use { resp ->
-            // 201 created, 405/409 already exists — ok
             if (resp.isSuccessful || resp.code in setOf(405, 409, 301, 302)) return
-            if (resp.code == 405) return
         }
     }
 }
@@ -159,52 +225,118 @@ class WebDavClient(private val config: WebDavConfig) {
 data class VaultMirrorResult(
     val uploaded: Int = 0,
     val downloaded: Int = 0,
+    val skipped: Int = 0,
     val message: String = "",
 )
 
 /**
- * Mirror local vault folders diary/, assets/, todos/ to WebDAV root.
- * Whole-file upload of local tree; pull remote files missing or newer by simple overwrite from remote list for todos.json + pull missing assets/md.
+ * Incremental vault mirror: upload/download only when mtime/size/hash differ.
  */
 class VaultMirror(
     private val dataRoot: File,
     private val client: WebDavClient,
 ) {
+    private val stateFile = File(dataRoot, ".webdav-state.json")
+    private val skewMs = 2_000L
+
     fun sync(): VaultMirrorResult {
-        if (!client.let { true }) return VaultMirrorResult(message = "WebDAV 未配置")
         return try {
             client.ensureRoot()
             var up = 0
             var down = 0
-            // Push local
-            for (rel in listLocalRelPaths()) {
-                val f = File(dataRoot, rel)
-                if (!f.isFile) continue
-                client.putFile(rel, f.readBytes(), guessType(rel))
-                up++
+            var skipped = 0
+            val state = loadState()
+            val remote = client.listResources()
+                .filter { isVaultPath(it.path) }
+                .associateBy { it.path }
+            val localPaths = listLocalRelPaths()
+            val seen = linkedSetOf<String>()
+
+            for (rel in localPaths) {
+                seen += rel
+                val file = File(dataRoot, rel)
+                if (!file.isFile) continue
+                val localMtime = file.lastModified()
+                val localSize = file.length()
+                val rem = remote[rel]
+                val prev = state[rel]
+                val needsUpload = when {
+                    rem == null -> true
+                    rem.lastModifiedMs > 0L && localMtime > rem.lastModifiedMs + skewMs -> true
+                    rem.lastModifiedMs > 0L && rem.lastModifiedMs > localMtime + skewMs -> false
+                    prev != null && prev.size == localSize && prev.mtime == localMtime -> false
+                    prev != null && prev.hash.isNotBlank() && prev.hash == sha1(file) &&
+                        rem.lastModifiedMs in 1..localMtime + skewMs -> false
+                    rem.lastModifiedMs <= 0L && prev != null &&
+                        prev.size == localSize && prev.mtime == localMtime -> false
+                    else -> true
+                }
+                val needsDownload = rem != null &&
+                    rem.lastModifiedMs > localMtime + skewMs &&
+                    !needsUpload
+
+                when {
+                    needsDownload -> {
+                        val bytes = client.getFile(rel) ?: continue
+                        file.parentFile?.mkdirs()
+                        file.writeBytes(bytes)
+                        state[rel] = Fingerprint(file.lastModified(), file.length(), sha1(file))
+                        down++
+                    }
+                    needsUpload -> {
+                        client.putFile(rel, file.readBytes(), guessType(rel))
+                        state[rel] = Fingerprint(localMtime, localSize, sha1(file))
+                        up++
+                    }
+                    else -> {
+                        state[rel] = Fingerprint(localMtime, localSize, prev?.hash ?: sha1(file))
+                        skipped++
+                    }
+                }
             }
-            // Pull remote files not present locally
-            for (rel in client.listRelativePaths()) {
-                if (!rel.startsWith("diary/") && !rel.startsWith("assets/") && !rel.startsWith("todos/")) continue
+
+            for ((rel, rem) in remote) {
+                if (rel in seen) continue
+                if (!isVaultPath(rel)) continue
                 val local = File(dataRoot, rel)
                 if (local.isFile) continue
                 val bytes = client.getFile(rel) ?: continue
                 local.parentFile?.mkdirs()
                 local.writeBytes(bytes)
+                state[rel] = Fingerprint(local.lastModified(), local.length(), sha1(local))
                 down++
             }
-            // Refresh manifest
+
             writeManifest()
-            client.putFile(
-                "manifest.json",
-                File(dataRoot, "manifest.json").readBytes(),
-                "application/json",
+            val manifest = File(dataRoot, "manifest.json")
+            if (manifest.isFile) {
+                client.putFile("manifest.json", manifest.readBytes(), "application/json")
+                state["manifest.json"] = Fingerprint(
+                    manifest.lastModified(),
+                    manifest.length(),
+                    sha1(manifest),
+                )
+                up++
+            }
+            saveState(state)
+            VaultMirrorResult(
+                uploaded = up,
+                downloaded = down,
+                skipped = skipped,
+                message = "云盘增量同步：上传 $up，下载 $down，跳过 $skipped",
             )
-            up++
-            VaultMirrorResult(uploaded = up, downloaded = down, message = "云盘镜像完成：上传 $up，下载 $down")
         } catch (e: Exception) {
             VaultMirrorResult(message = "云盘同步失败：${e.message}")
         }
+    }
+
+    private fun isVaultPath(rel: String): Boolean {
+        val name = rel.substringAfterLast('/')
+        if (name.startsWith(".")) return false
+        return rel.startsWith("diary/") ||
+            rel.startsWith("assets/") ||
+            rel.startsWith("todos/") ||
+            rel == "manifest.json"
     }
 
     private fun listLocalRelPaths(): List<String> {
@@ -213,6 +345,7 @@ class VaultMirror(
             val dir = File(dataRoot, name)
             if (!dir.exists()) continue
             dir.walkTopDown().filter { it.isFile }.forEach { f ->
+                if (f.name.startsWith(".")) return@forEach
                 out += f.relativeTo(dataRoot).path.replace('\\', '/')
             }
         }
@@ -239,5 +372,64 @@ class VaultMirror(
         rel.endsWith(".jpg") || rel.endsWith(".jpeg") -> "image/jpeg"
         rel.endsWith(".webp") -> "image/webp"
         else -> "application/octet-stream"
+    }
+
+    private data class Fingerprint(val mtime: Long, val size: Long, val hash: String)
+
+    private fun loadState(): MutableMap<String, Fingerprint> {
+        if (!stateFile.isFile) return mutableMapOf()
+        return try {
+            val root = JSONObject(stateFile.readText(Charsets.UTF_8))
+            val files = root.optJSONObject("files") ?: return mutableMapOf()
+            val out = mutableMapOf<String, Fingerprint>()
+            val keys = files.keys()
+            while (keys.hasNext()) {
+                val path = keys.next()
+                val obj = files.optJSONObject(path) ?: continue
+                out[path] = Fingerprint(
+                    mtime = obj.optLong("mtime"),
+                    size = obj.optLong("size"),
+                    hash = obj.optString("hash"),
+                )
+            }
+            out
+        } catch (_: Exception) {
+            mutableMapOf()
+        }
+    }
+
+    private fun saveState(state: Map<String, Fingerprint>) {
+        try {
+            val files = JSONObject()
+            for ((path, fp) in state) {
+                files.put(
+                    path,
+                    JSONObject()
+                        .put("mtime", fp.mtime)
+                        .put("size", fp.size)
+                        .put("hash", fp.hash),
+                )
+            }
+            stateFile.writeText(JSONObject().put("files", files).toString(), Charsets.UTF_8)
+        } catch (_: Exception) {
+            // local cache only
+        }
+    }
+
+    private fun sha1(file: File): String {
+        return try {
+            val digest = MessageDigest.getInstance("SHA-1")
+            file.inputStream().use { input ->
+                val buf = ByteArray(8 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n <= 0) break
+                    digest.update(buf, 0, n)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            ""
+        }
     }
 }

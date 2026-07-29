@@ -38,7 +38,7 @@ object DemoSeed {
             todayStr,
             "湖边三件小事",
             """
-            # 傍晚
+            ## 傍晚
 
             路过湖边，风把柳条掀起来。
 

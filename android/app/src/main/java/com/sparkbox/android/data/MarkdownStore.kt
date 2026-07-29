@@ -95,13 +95,17 @@ class MarkdownStore(
             diaryRoot.walkTopDown()
                 .filter { it.isFile && it.extension == "md" }
                 .forEach { path ->
-                    if (DATE_FILE_RE.matches(path.name)) return@forEach
-                    val stem = path.nameWithoutExtension
-                    if (!UUID_RE.matches(stem)) return@forEach
-                    val text = path.readText(Charsets.UTF_8)
-                    val (_, fm) = parse(text)
-                    val entryDate = fm.date
-                    if (entryDate.isNotBlank()) out[stem] = entryDate
+                    try {
+                        if (DATE_FILE_RE.matches(path.name)) return@forEach
+                        val stem = path.nameWithoutExtension
+                        if (!UUID_RE.matches(stem)) return@forEach
+                        val text = path.readText(Charsets.UTF_8)
+                        val (_, fm) = parse(text)
+                        val entryDate = fm.date
+                        if (entryDate.isNotBlank()) out[stem] = entryDate
+                    } catch (_: Exception) {
+                        // Skip corrupt notes when rebuilding the id index.
+                    }
                 }
         }
         persistIndex(out)
@@ -207,23 +211,27 @@ class MarkdownStore(
         diaryRoot.walkTopDown()
             .filter { it.isFile && it.extension == "md" }
             .forEach { path ->
-                if (DATE_FILE_RE.matches(path.name)) return@forEach
-                val stem = path.nameWithoutExtension
-                if (!UUID_RE.matches(stem)) return@forEach
-                val text = path.readText(Charsets.UTF_8)
-                val (body, fm) = parse(text)
-                val entryDate = fm.date
-                if (entryDate.isBlank()) return@forEach
-                rebuilt[stem] = entryDate
-                found += ParsedNote(
-                    id = stem,
-                    date = entryDate,
-                    body = body,
-                    frontMatter = fm.copy(
+                try {
+                    if (DATE_FILE_RE.matches(path.name)) return@forEach
+                    val stem = path.nameWithoutExtension
+                    if (!UUID_RE.matches(stem)) return@forEach
+                    val text = path.readText(Charsets.UTF_8)
+                    val (body, fm) = parse(text)
+                    val entryDate = fm.date
+                    if (entryDate.isBlank()) return@forEach
+                    rebuilt[stem] = entryDate
+                    found += ParsedNote(
+                        id = stem,
                         date = entryDate,
-                        id = fm.id.ifBlank { stem },
-                    ),
-                )
+                        body = body,
+                        frontMatter = fm.copy(
+                            date = entryDate,
+                            id = fm.id.ifBlank { stem },
+                        ),
+                    )
+                } catch (_: Exception) {
+                    // Corrupt / unreadable markdown must not crash the home list.
+                }
             }
         idIndex.set(rebuilt)
         persistIndex(rebuilt)

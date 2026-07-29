@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BarChart
+import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.CheckBox
 import androidx.compose.material.icons.outlined.CheckBoxOutlineBlank
 import androidx.compose.material.icons.outlined.CloudSync
@@ -234,6 +235,7 @@ fun SparkboxApp(viewModel: SparkboxViewModel) {
             composable(Routes.Home) {
                 HomeScreen(
                     notes = state.filteredNotes,
+                    dayContexts = state.dayContexts,
                     filterQuery = state.filterQuery,
                     filterDate = state.filterDate,
                     filterTag = state.filterTag,
@@ -472,6 +474,7 @@ private fun TabActionIcon(
 @Composable
 private fun HomeScreen(
     notes: List<SparkEntry>,
+    dayContexts: Map<String, DayContext>,
     filterQuery: String,
     filterDate: String,
     filterTag: String,
@@ -575,6 +578,7 @@ private fun HomeScreen(
                     items(notes, key = { it.id }) { note ->
                         InspirationCard(
                             note = note,
+                            dayContext = dayContexts[note.entryDate],
                             resolveAsset = resolveAsset,
                             onOpen = { onOpenRead(note.id) },
                         )
@@ -633,50 +637,115 @@ private fun TagChipRow(tags: List<String>, compact: Boolean = false) {
 @Composable
 private fun InspirationCard(
     note: SparkEntry,
+    dayContext: DayContext?,
     resolveAsset: (String) -> File?,
     onOpen: () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
+    val shape = RoundedCornerShape(14.dp)
+    val previewSp = 15f
+    val mute = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+    val primaryTag = note.tags.firstOrNull()
+    val weather = dayContext?.weatherLine().orEmpty()
+    val place = dayContext?.location.orEmpty().let { DeviceLabels.shorten(it, 14) }
+    val timeLabel = formatClock(note.updatedAt)
+    val footerLeft = listOfNotNull(
+        timeLabel.takeIf { it.isNotBlank() },
+        weather.takeIf { it.isNotBlank() },
+    ).joinToString(" · ")
+
     Column(
         Modifier
             .fillMaxWidth()
             .clip(shape)
             .background(MaterialTheme.colorScheme.surface)
-            .border(1.dp, MaterialTheme.colorScheme.outline, shape)
+            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.85f), shape)
             .clickable(onClick = onOpen)
-            .padding(14.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
     ) {
+        if (!primaryTag.isNullOrBlank()) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.BookmarkBorder,
+                    contentDescription = null,
+                    tint = mute,
+                    modifier = Modifier.size(14.dp),
+                )
+                Text(
+                    primaryTag,
+                    modifier = Modifier.padding(start = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = mute,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+        }
         Text(
             noteDisplayTitle(note),
-            style = MaterialTheme.typography.titleMedium,
-            fontFamily = AppFontFamily,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontFamily = AppFontFamily,
+                fontSize = 21.sp,
+                lineHeight = 28.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+            ),
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(8.dp))
-        CardMarkdownBody(
-            markdown = MarkdownImages.stripForDisplay(note.body),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 28.dp, max = 180.dp),
-            fontSp = 14.5f,
-        )
+        Spacer(Modifier.height(12.dp))
+        val preview = notePreview(note.body)
+        if (preview != "（空）") {
+            CardMarkdownBody(
+                markdown = MarkdownImages.stripForDisplay(note.body),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 20.dp, max = 120.dp),
+                fontSp = previewSp,
+            )
+        }
         if (note.imageRels.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(12.dp))
             ImageThumbRow(rels = note.imageRels, resolveAsset = resolveAsset)
         }
-        if (note.tags.isNotEmpty()) {
-            Spacer(Modifier.height(10.dp))
-            TagChipRow(note.tags, compact = true)
+        if (footerLeft.isNotBlank() || place.isNotBlank()) {
+            Spacer(Modifier.height(14.dp))
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    footerLeft,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = mute,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (place.isNotBlank()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(start = 8.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.LocationOn,
+                            contentDescription = null,
+                            tint = mute,
+                            modifier = Modifier.size(13.dp),
+                        )
+                        Text(
+                            place,
+                            modifier = Modifier.padding(start = 2.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = mute,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
-        Spacer(Modifier.height(8.dp))
-        Text(
-            formatTinyDate(note.entryDate),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-        )
     }
 }
 
@@ -838,37 +907,69 @@ private fun NoteReadScreen(
                 Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
             ) {
-                if (entry.tags.isNotEmpty()) {
-                    TagChipRow(entry.tags)
-                    Spacer(Modifier.height(12.dp))
-                }
-                Text(
-                    noteDisplayTitle(entry),
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontFamily = AppFontFamily,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(16.dp))
-                CardMarkdownBody(
-                    markdown = MarkdownImages.stripForDisplay(entry.body),
-                    modifier = Modifier.fillMaxWidth(),
-                    fontSp = fontSp,
-                )
-                if (entry.imageRels.isNotEmpty()) {
-                    Spacer(Modifier.height(20.dp))
-                    ImageFullColumn(rels = entry.imageRels, resolveAsset = resolveAsset)
+                ) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 26.dp),
+                    ) {
+                        if (entry.tags.isNotEmpty()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                Icon(
+                                    Icons.Outlined.BookmarkBorder,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(15.dp),
+                                )
+                                Text(
+                                    entry.tags.first(),
+                                    modifier = Modifier.padding(start = 4.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                )
+                            }
+                            Spacer(Modifier.height(20.dp))
+                        }
+                        Text(
+                            noteDisplayTitle(entry),
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontFamily = AppFontFamily,
+                                fontSize = (fontSp * 1.78f).sp,
+                                lineHeight = (fontSp * 2.25f).sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            ),
+                            textAlign = TextAlign.Center,
+                        )
+                        Spacer(Modifier.height(26.dp))
+                        CardMarkdownBody(
+                            markdown = MarkdownImages.stripForDisplay(entry.body),
+                            modifier = Modifier.fillMaxWidth(),
+                            fontSp = fontSp,
+                        )
+                        if (entry.imageRels.isNotEmpty()) {
+                            Spacer(Modifier.height(20.dp))
+                            ImageFullColumn(rels = entry.imageRels, resolveAsset = resolveAsset)
+                        }
+                    }
                 }
-                Spacer(Modifier.height(28.dp))
+                Spacer(Modifier.height(20.dp))
                 ReadContextBlock(
                     context = context,
                     weatherLoading = weatherLoading,
                 )
-                Spacer(Modifier.height(32.dp))
+                Spacer(Modifier.height(28.dp))
             }
         }
     }
@@ -1612,6 +1713,15 @@ private fun formatHeading(entryDate: String): String {
 private fun formatTinyDate(entryDate: String): String {
     val d = LocalDate.parse(entryDate)
     return "${d.monthValue}/${d.dayOfMonth}"
+}
+
+private fun formatClock(iso: String): String {
+    if (iso.isBlank()) return ""
+    return try {
+        OffsetDateTime.parse(iso).format(DateTimeFormatter.ofPattern("HH:mm"))
+    } catch (_: Exception) {
+        iso.dropWhile { it != 'T' }.drop(1).take(5)
+    }
 }
 
 private fun formatDateTime(iso: String): String {

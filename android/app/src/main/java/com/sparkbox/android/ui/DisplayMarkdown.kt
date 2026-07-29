@@ -86,7 +86,8 @@ object DisplayMarkdown {
 
                 val heading = headingLine.matchEntire(line)
                 if (heading != null) {
-                    val level = heading.groupValues[1].length.coerceIn(1, 6)
+                    // Body never uses H1 visually — `#` demotes to H2.
+                    val level = heading.groupValues[1].length.coerceIn(1, 6).let { if (it < 2) 2 else it }
                     val text = heading.groupValues[2]
                     withStyle(
                         SpanStyle(
@@ -199,11 +200,10 @@ object DisplayMarkdown {
     }
 
     private fun headingSize(baseSp: Float, level: Int): TextUnit =
-        when (level) {
-            1 -> (baseSp * 1.55f).sp
-            2 -> (baseSp * 1.35f).sp
-            3 -> (baseSp * 1.2f).sp
-            4 -> (baseSp * 1.1f).sp
+        when (level.coerceAtLeast(2)) {
+            2 -> (baseSp * 1.22f).sp
+            3 -> (baseSp * 1.12f).sp
+            4 -> (baseSp * 1.05f).sp
             else -> baseSp.sp
         }
 
