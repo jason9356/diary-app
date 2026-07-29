@@ -81,18 +81,6 @@ data class NativeTodo(
     val updatedAt: String = DiaryDates.nowIso(),
 )
 
-data class ObsidianTodo(
-    val filePath: String,
-    val lineIndex: Int,
-    val originalLine: String,
-    val content: String,
-    val indent: String,
-    val number: String,
-    val tagInner: String,
-) {
-    val key: String get() = "$filePath#$lineIndex"
-}
-
 object DiaryDates {
     fun today(): String = LocalDate.now().toString()
 

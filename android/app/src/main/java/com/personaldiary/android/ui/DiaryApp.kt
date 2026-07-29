@@ -19,13 +19,16 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +50,6 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material.icons.outlined.LocationOn
 import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.WbCloudy
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -97,7 +99,6 @@ import com.personaldiary.android.data.DiaryDates
 import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.MarkdownImages
 import com.personaldiary.android.data.NativeTodo
-import com.personaldiary.android.data.ObsidianTodo
 import com.personaldiary.android.ui.theme.AppFontFamily
 import com.personaldiary.android.ui.theme.LocalAppColors
 import kotlinx.coroutines.delay
@@ -119,8 +120,6 @@ private object Routes {
     const val SettingsStorageCloud = "settings/sync/storage/cloud"
     const val SettingsStorageWebDav = "settings/sync/storage/webdav"
     const val SettingsStorageStub = "settings/sync/storage/stub"
-    const val SettingsSyncCards = "settings/sync/cards"
-    const val SettingsSyncObsidian = "settings/sync/obsidian"
     const val SettingsAi = "settings/ai"
     const val SettingsAbout = "settings/about"
     const val Stats = "stats"
@@ -160,9 +159,11 @@ fun DiaryApp(viewModel: DiaryViewModel) {
 
     Scaffold(
         containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
+                    modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars),
                     containerColor = LocalAppColors.current.field.copy(alpha = 0.94f),
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     tonalElevation = 0.dp,
@@ -218,7 +219,12 @@ fun DiaryApp(viewModel: DiaryViewModel) {
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize().background(LocalAppColors.current.brush())) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(LocalAppColors.current.brush())
+                .padding(padding),
+        ) {
             NavHost(
                 navController = navController,
                 startDestination = Routes.Home,
@@ -265,9 +271,13 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                 TodosScreen(
                     nativeTodos = state.nativeTodos,
                     fontSp = state.editorFontSp,
-                    onAdd = viewModel::addNativeTodo,
                     onToggleNative = viewModel::setNativeTodoDone,
                     onOpenNative = { id -> navController.navigate(Routes.todoDetail(id)) },
+                    onNew = {
+                        viewModel.createNativeTodo { id ->
+                            navController.navigate(Routes.todoDetail(id))
+                        }
+                    },
                 )
             }
             composable(
@@ -316,7 +326,6 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                     state = state,
                     onBack = { navController.popBackStack() },
                     onOpenStorage = { navController.navigate(Routes.SettingsStorage) },
-                    onOpenCards = { navController.navigate(Routes.SettingsSyncCards) },
                 )
             }
             composable(Routes.SettingsStorage) {
@@ -324,7 +333,6 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                     state = state,
                     onBack = { navController.popBackStack() },
                     onSelectTarget = viewModel::setStorageTarget,
-                    onOpenServer = { navController.navigate(Routes.SettingsSyncCards) },
                     onOpenCloud = { navController.navigate(Routes.SettingsStorageCloud) },
                     onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
                 )
@@ -351,22 +359,6 @@ fun DiaryApp(viewModel: DiaryViewModel) {
                     state = state,
                     onBack = { navController.popBackStack() },
                     onSave = viewModel::saveCloudStubSettings,
-                )
-            }
-            composable(Routes.SettingsSyncCards) {
-                SettingsSyncCardsScreen(
-                    state = state,
-                    onBack = { navController.popBackStack() },
-                    onSaveSync = viewModel::saveSyncSettings,
-                    onSyncNow = { viewModel.syncNow(DiaryDates.today()) },
-                )
-            }
-            composable(Routes.SettingsSyncObsidian) {
-                SettingsSyncObsidianScreen(
-                    state = state,
-                    onBack = { navController.popBackStack() },
-                    onEnabledChange = viewModel::setObsidianTodosEnabled,
-                    onSaveObsidian = viewModel::saveObsidianSettings,
                 )
             }
             composable(Routes.SettingsAi) {
@@ -1032,15 +1024,32 @@ private fun levelLabel(level: Int): String = when (level) {
 private fun TodosScreen(
     nativeTodos: List<NativeTodo>,
     fontSp: Float,
-    onAdd: (String) -> Unit,
     onToggleNative: (String, Boolean) -> Unit,
     onOpenNative: (String) -> Unit,
+    onNew: () -> Unit,
 ) {
-    var draft by remember { mutableStateOf("") }
     val openCount = nativeTodos.count { !it.done }
+    val fabInteraction = remember { MutableInteractionSource() }
+    val fabPressed by fabInteraction.collectIsPressedAsState()
+    val fabScale by animateFloatAsState(
+        targetValue = if (fabPressed) 0.94f else 1f,
+        animationSpec = tween(120),
+        label = "fabScale",
+    )
     Scaffold(
         containerColor = Color.Transparent,
         topBar = { MainTabTopBar(title = "事项") },
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = onNew,
+                modifier = Modifier.scale(fabScale),
+                interactionSource = fabInteraction,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = "新建事项")
+            }
+        },
     ) { padding ->
         Column(
             Modifier
@@ -1048,35 +1057,8 @@ private fun TodosScreen(
                 .padding(padding)
                 .padding(horizontal = 16.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    placeholder = { Text("添加事项") },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surface,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        unfocusedPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        focusedBorderColor = MaterialTheme.colorScheme.outline,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline,
-                    ),
-                )
-                TextButton(onClick = {
-                    onAdd(draft)
-                    draft = ""
-                }) { Text("添加") }
-            }
             LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = 14.dp),
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 item {
@@ -1148,7 +1130,7 @@ private fun TodosScreen(
                         }
                     }
                 }
-                item { Spacer(Modifier.height(24.dp)) }
+                item { Spacer(Modifier.height(72.dp)) }
             }
         }
     }
@@ -1169,6 +1151,7 @@ private fun TodoDetailScreen(
     var priority by remember(initial.id) { mutableStateOf(initial.priority) }
     var urgency by remember(initial.id) { mutableStateOf(initial.urgency) }
     var done by remember(initial.id) { mutableStateOf(initial.done) }
+    val isBlankDraft = text.isBlank() && detail.isBlank()
     val fieldColors = OutlinedTextFieldDefaults.colors(
         focusedContainerColor = MaterialTheme.colorScheme.surface,
         unfocusedContainerColor = MaterialTheme.colorScheme.surface,
@@ -1193,7 +1176,11 @@ private fun TodoDetailScreen(
                     )
                 },
                 navigationIcon = {
-                    TabActionIcon(onClick = onBack) {
+                    TabActionIcon(
+                        onClick = {
+                            if (isBlankDraft) onDelete() else onBack()
+                        },
+                    ) {
                         Icon(
                             Icons.AutoMirrored.Outlined.ArrowBack,
                             contentDescription = "返回",
@@ -1331,66 +1318,6 @@ private fun LevelPicker(value: Int, onChange: (Int) -> Unit) {
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.labelLarge,
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ObsidianTodoCard(
-    todo: ObsidianTodo,
-    fontSp: Float,
-    onComplete: () -> Unit,
-) {
-    val fileName = remember(todo.filePath) {
-        todo.filePath.substringAfterLast('/').ifBlank { todo.filePath }
-    }
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                ) {
-                    Text(
-                        todo.tagInner.ifBlank { "待办" },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Text(
-                    fileName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            CardMarkdownBody(
-                markdown = todo.content,
-                fontSp = fontSp,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = onComplete) { Text("完成") }
             }
         }
     }

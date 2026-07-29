@@ -114,36 +114,4 @@ object DemoSeed {
 
         prefs.demoSeeded = true
     }
-
-    /** Sample Obsidian-style lines for UI when COS is empty. */
-    fun sampleObsidianTodos(): List<ObsidianTodo> =
-        listOf(
-            ObsidianTodo(
-                filePath = "日记/2026-07-29.md",
-                lineIndex = 12,
-                originalLine = "1. 【进行中】**收束编辑页**：去掉标签框，正文写 #标签",
-                content = "**收束编辑页**：去掉标签框，正文写 #标签",
-                indent = "",
-                number = "1",
-                tagInner = "进行中",
-            ),
-            ObsidianTodo(
-                filePath = "日记/2026-07-29.md",
-                lineIndex = 13,
-                originalLine = "2. 【待办】核对阅读页：地点 · 设备 · 天气三行，别太长",
-                content = "核对阅读页：地点 · 设备 · 天气三行，别太长",
-                indent = "",
-                number = "2",
-                tagInner = "待办",
-            ),
-            ObsidianTodo(
-                filePath = "日记/2026-07-28.md",
-                lineIndex = 8,
-                originalLine = "1. 【灵感】试试 *匣光* 与 **青笺** 两套主题",
-                content = "试试 *匣光* 与 **青笺** 两套主题",
-                indent = "",
-                number = "1",
-                tagInner = "灵感",
-            ),
-        )
 }

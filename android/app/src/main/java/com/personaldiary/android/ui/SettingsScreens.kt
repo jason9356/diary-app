@@ -116,7 +116,7 @@ internal fun SettingsHubScreen(
             SettingsNavRow(
                 icon = Icons.Outlined.CloudSync,
                 title = "同步",
-                subtitle = "数据存放 · 自建服务",
+                subtitle = "数据存放",
                 onClick = onOpenSync,
             )
             SettingsNavRow(
@@ -252,10 +252,8 @@ internal fun SettingsSyncHubScreen(
     state: DiaryUiState,
     onBack: () -> Unit,
     onOpenStorage: () -> Unit,
-    onOpenCards: () -> Unit,
 ) {
     val targetLabel = when (state.storageTarget) {
-        "sync_server" -> "自建同步服务"
         "cloud" -> when (state.cloudProvider) {
             "webdav" -> "云盘 · WebDAV"
             "baidu" -> "云盘 · 百度"
@@ -273,12 +271,6 @@ internal fun SettingsSyncHubScreen(
             subtitle = targetLabel,
             onClick = onOpenStorage,
         )
-        SettingsNavRow(
-            icon = Icons.Outlined.CloudSync,
-            title = "自建服务凭证",
-            subtitle = if (state.syncEndpoint.isBlank()) "未配置" else state.syncEndpoint,
-            onClick = onOpenCards,
-        )
     }
 }
 
@@ -287,7 +279,6 @@ internal fun SettingsStorageScreen(
     state: DiaryUiState,
     onBack: () -> Unit,
     onSelectTarget: (String) -> Unit,
-    onOpenServer: () -> Unit,
     onOpenCloud: () -> Unit,
     onSyncNow: () -> Unit,
 ) {
@@ -299,34 +290,18 @@ internal fun SettingsStorageScreen(
             onClick = { onSelectTarget("local") },
         )
         StorageTargetOption(
-            selected = state.storageTarget == "sync_server",
-            title = "自建同步服务",
-            subtitle = "endpoint + Token",
-            onClick = { onSelectTarget("sync_server") },
-        )
-        StorageTargetOption(
             selected = state.storageTarget == "cloud",
             title = "云盘",
             subtitle = "WebDAV / 其它",
             onClick = { onSelectTarget("cloud") },
         )
-        when (state.storageTarget) {
-            "sync_server" -> {
-                SettingsNavRow(
-                    icon = Icons.Outlined.CloudSync,
-                    title = "服务地址与 Token",
-                    subtitle = state.syncEndpoint.ifBlank { "尚未填写" },
-                    onClick = onOpenServer,
-                )
-            }
-            "cloud" -> {
-                SettingsNavRow(
-                    icon = Icons.Outlined.Storage,
-                    title = "云盘厂商与凭证",
-                    subtitle = state.cloudProvider,
-                    onClick = onOpenCloud,
-                )
-            }
+        if (state.storageTarget == "cloud") {
+            SettingsNavRow(
+                icon = Icons.Outlined.Storage,
+                title = "云盘厂商与凭证",
+                subtitle = state.cloudProvider,
+                onClick = onOpenCloud,
+            )
         }
         if (state.storageTarget != "local") {
             TextButton(onClick = onSyncNow, enabled = !state.syncing) {
@@ -516,114 +491,6 @@ private fun StorageTargetOption(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
-}
-
-@Composable
-internal fun SettingsSyncCardsScreen(
-    state: DiaryUiState,
-    onBack: () -> Unit,
-    onSaveSync: (String, String) -> Unit,
-    onSyncNow: () -> Unit,
-) {
-    var ep by remember(state.syncEndpoint) { mutableStateOf(state.syncEndpoint) }
-    var tok by remember(state.syncToken) { mutableStateOf(state.syncToken) }
-    SettingsSubScaffold(title = "灵感卡片同步", onBack = onBack) {
-        OutlinedTextField(
-            value = ep,
-            onValueChange = { ep = it },
-            label = { Text("服务地址") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            colors = themedFieldColors(),
-        )
-        OutlinedTextField(
-            value = tok,
-            onValueChange = { tok = it },
-            label = { Text("Token") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            colors = themedFieldColors(),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = { onSaveSync(ep, tok) }) { Text("保存") }
-            TextButton(onClick = onSyncNow, enabled = !state.syncing) {
-                Text(if (state.syncing) "同步中…" else "立即同步")
-            }
-        }
-        if (state.status.isNotBlank()) {
-            Text(state.status, style = MaterialTheme.typography.labelMedium)
-        }
-    }
-}
-
-@Composable
-internal fun SettingsSyncObsidianScreen(
-    state: DiaryUiState,
-    onBack: () -> Unit,
-    onEnabledChange: (Boolean) -> Unit,
-    onSaveObsidian: (
-        String, String, String, String, String, String, String, String, String, String,
-    ) -> Unit,
-) {
-    var s3Ep by remember(state.s3Endpoint) { mutableStateOf(state.s3Endpoint) }
-    var s3Region by remember(state.s3Region) { mutableStateOf(state.s3Region) }
-    var s3Bucket by remember(state.s3Bucket) { mutableStateOf(state.s3Bucket) }
-    var s3Ak by remember(state.s3AccessKey) { mutableStateOf(state.s3AccessKey) }
-    var s3Sk by remember(state.s3SecretKey) { mutableStateOf(state.s3SecretKey) }
-    var s3Prefix by remember(state.s3Prefix) { mutableStateOf(state.s3Prefix) }
-    var diaryFolder by remember(state.obsidianDiaryFolder) { mutableStateOf(state.obsidianDiaryFolder) }
-    var tagOpen by remember(state.tagOpen) { mutableStateOf(state.tagOpen) }
-    var tagClose by remember(state.tagClose) { mutableStateOf(state.tagClose) }
-    var completed by remember(state.completedLabel) { mutableStateOf(state.completedLabel) }
-
-    SettingsSubScaffold(title = "Obsidian 待办", onBack = onBack) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text("使用 Obsidian 待办", style = MaterialTheme.typography.bodyLarge)
-            }
-            Switch(
-                checked = state.obsidianTodosEnabled,
-                onCheckedChange = onEnabledChange,
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant,
-                ),
-            )
-        }
-
-        if (!state.obsidianTodosEnabled) {
-            return@SettingsSubScaffold
-        }
-
-        SettingsSectionLabel("连接")
-        val fields = themedFieldColors()
-        OutlinedTextField(value = s3Ep, onValueChange = { s3Ep = it }, label = { Text("S3 Endpoint") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        OutlinedTextField(value = s3Region, onValueChange = { s3Region = it }, label = { Text("Region") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        OutlinedTextField(value = s3Bucket, onValueChange = { s3Bucket = it }, label = { Text("Bucket") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        OutlinedTextField(value = s3Ak, onValueChange = { s3Ak = it }, label = { Text("Access Key") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        OutlinedTextField(value = s3Sk, onValueChange = { s3Sk = it }, label = { Text("Secret Key") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        OutlinedTextField(value = s3Prefix, onValueChange = { s3Prefix = it }, label = { Text("Prefix") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-
-        SettingsSectionLabel("日记规则")
-        OutlinedTextField(value = diaryFolder, onValueChange = { diaryFolder = it }, label = { Text("日记文件夹") }, singleLine = true, modifier = Modifier.fillMaxWidth(), colors = fields)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(value = tagOpen, onValueChange = { tagOpen = it }, label = { Text("开") }, modifier = Modifier.weight(1f), colors = fields)
-            OutlinedTextField(value = tagClose, onValueChange = { tagClose = it }, label = { Text("闭") }, modifier = Modifier.weight(1f), colors = fields)
-            OutlinedTextField(value = completed, onValueChange = { completed = it }, label = { Text("完成文案") }, modifier = Modifier.weight(1.4f), colors = fields)
-        }
-        TextButton(onClick = {
-            onSaveObsidian(s3Ep, s3Region, s3Bucket, s3Ak, s3Sk, s3Prefix, diaryFolder, tagOpen, tagClose, completed)
-        }) { Text("保存") }
-        if (state.status.isNotBlank()) {
-            Text(state.status, style = MaterialTheme.typography.labelMedium)
         }
     }
 }

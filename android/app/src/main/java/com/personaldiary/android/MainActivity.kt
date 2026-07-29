@@ -1,5 +1,6 @@
 package com.personaldiary.android
 
+import android.graphics.Color as AndroidColor
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -8,7 +9,6 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -44,9 +44,10 @@ class MainActivity : ComponentActivity() {
                 val view = LocalView.current
                 val field = LocalAppColors.current.field
                 SideEffect {
-                    val window = window
-                    window.statusBarColor = Color.Transparent.toArgb()
-                    window.navigationBarColor = field.copy(alpha = 0.94f).toArgb()
+                    val window = this@MainActivity.window
+                    window.statusBarColor = AndroidColor.TRANSPARENT
+                    window.navigationBarColor = AndroidColor.TRANSPARENT
+                    window.decorView.setBackgroundColor(field.toArgb())
                     val insets = WindowCompat.getInsetsController(window, view)
                     insets.isAppearanceLightStatusBars = !dark
                     insets.isAppearanceLightNavigationBars = !dark

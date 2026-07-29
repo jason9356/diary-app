@@ -14,14 +14,7 @@ import com.personaldiary.android.data.DiaryEntry
 import com.personaldiary.android.data.DiaryRepository
 import com.personaldiary.android.data.NativeTodo
 import com.personaldiary.android.data.NativeTodoStore
-import com.personaldiary.android.data.ObsidianTodo
 import com.personaldiary.android.data.AppPrefs
-import com.personaldiary.android.obsidian.ObsidianTodoExtract
-import com.personaldiary.android.obsidian.S3Config
-import com.personaldiary.android.obsidian.S3ObjectStore
-import com.personaldiary.android.obsidian.TagRule
-import com.personaldiary.android.sync.SyncClient
-import com.personaldiary.android.sync.SyncPrefs
 import com.personaldiary.android.sync.VaultMirror
 import com.personaldiary.android.sync.WebDavClient
 import com.personaldiary.android.sync.WebDavConfig
@@ -49,22 +42,16 @@ data class DiaryUiState(
     val filterDate: String = "",
     val filterTag: String = "",
     val nativeTodos: List<NativeTodo> = emptyList(),
-    val obsidianTodos: List<ObsidianTodo> = emptyList(),
     val selectedDate: String = DiaryDates.today(),
     val weatherLoading: Boolean = false,
     val syncing: Boolean = false,
-    val todosLoading: Boolean = false,
     val status: String = "",
-    val todoStatus: String = "",
     val needLocationPermission: Boolean = false,
-    val syncEndpoint: String = "",
-    val syncToken: String = "",
     val editorFontSp: Float = 17f,
     /** system | light | dark */
     val themeMode: String = "system",
     /** slip | moss | spark | paper */
     val themePalette: String = "slip",
-    val obsidianTodosEnabled: Boolean = false,
     val storageTarget: String = "local",
     val cloudProvider: String = "webdav",
     val webdavUrl: String = "",
@@ -76,25 +63,13 @@ data class DiaryUiState(
     val cloudToken: String = "",
     val aiEnabled: Boolean = false,
     val aiPreview: String = "",
-    val s3Endpoint: String = "",
-    val s3Region: String = "us-east-1",
-    val s3Bucket: String = "",
-    val s3AccessKey: String = "",
-    val s3SecretKey: String = "",
-    val s3Prefix: String = "",
-    val obsidianDiaryFolder: String = "日记",
-    val tagOpen: String = "【",
-    val tagClose: String = "】",
-    val completedLabel: String = "已完成",
 )
 
 class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     private val appCtx = app as DiaryApplication
     private val repo: DiaryRepository = appCtx.repository
     private val todoStore: NativeTodoStore = appCtx.todoStore
-    private val syncPrefs = SyncPrefs(app)
     private val appPrefs = AppPrefs(app)
-    private val syncClient = SyncClient(repo, syncPrefs)
     private val locationHelper = LocationHelper(app)
     private val placeResolver = PlaceResolver(app)
     private val weatherService = WeatherService()
@@ -110,9 +85,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
-        if (appPrefs.obsidianTodosEnabled) {
-            appPrefs.obsidianTodosEnabled = false
-        }
         viewModelScope.launch {
             withContext(Dispatchers.IO) {
                 DemoSeed.ensure(repo, todoStore, appPrefs)
@@ -124,12 +96,9 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun loadPrefsState(): DiaryUiState =
         DiaryUiState(
-            syncEndpoint = syncPrefs.endpoint,
-            syncToken = syncPrefs.token,
             editorFontSp = appPrefs.editorFontSp,
             themeMode = appPrefs.themeMode,
             themePalette = appPrefs.themePalette,
-            obsidianTodosEnabled = false,
             storageTarget = appPrefs.storageTarget,
             cloudProvider = appPrefs.cloudProvider,
             webdavUrl = appPrefs.webdavUrl,
@@ -140,16 +109,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
             cloudAppKey = appPrefs.cloudAppKey,
             cloudToken = appPrefs.cloudToken,
             aiEnabled = appPrefs.aiEnabled,
-            s3Endpoint = appPrefs.s3Endpoint,
-            s3Region = appPrefs.s3Region,
-            s3Bucket = appPrefs.s3Bucket,
-            s3AccessKey = appPrefs.s3AccessKey,
-            s3SecretKey = appPrefs.s3SecretKey,
-            s3Prefix = appPrefs.s3Prefix,
-            obsidianDiaryFolder = appPrefs.obsidianDiaryFolder,
-            tagOpen = appPrefs.tagOpen,
-            tagClose = appPrefs.tagClose,
-            completedLabel = appPrefs.completedLabel,
         )
 
     private fun ai(): AiHooks = NoOpAiHooks(_state.value.aiEnabled)
@@ -284,18 +243,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun saveSyncSettings(endpoint: String, token: String) {
-        syncPrefs.endpoint = endpoint
-        syncPrefs.token = token
-        _state.update {
-            it.copy(
-                syncEndpoint = syncPrefs.endpoint,
-                syncToken = syncPrefs.token,
-                status = "同步设置已保存",
-            )
-        }
-    }
-
     fun setEditorFontSp(sp: Float) {
         appPrefs.editorFontSp = sp
         _state.update { it.copy(editorFontSp = appPrefs.editorFontSp) }
@@ -311,18 +258,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(themePalette = appPrefs.themePalette) }
     }
 
-    fun setObsidianTodosEnabled(enabled: Boolean) {
-        appPrefs.obsidianTodosEnabled = enabled
-        _state.update {
-            it.copy(
-                obsidianTodosEnabled = enabled,
-                obsidianTodos = if (enabled) it.obsidianTodos else emptyList(),
-                todoStatus = if (enabled) it.todoStatus else "",
-            )
-        }
-        if (enabled) refreshObsidianTodos()
-    }
-
     fun setAiEnabled(enabled: Boolean) {
         appPrefs.aiEnabled = enabled
         _state.update { it.copy(aiEnabled = enabled, aiPreview = "") }
@@ -332,45 +267,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         val today = DiaryDates.today()
         val cards = _state.value.notes.filter { it.entryDate == today }
         _state.update { it.copy(aiPreview = ai().dailyDigest(today, cards)) }
-    }
-
-    fun saveObsidianSettings(
-        endpoint: String,
-        region: String,
-        bucket: String,
-        accessKey: String,
-        secretKey: String,
-        prefix: String,
-        diaryFolder: String,
-        tagOpen: String,
-        tagClose: String,
-        completedLabel: String,
-    ) {
-        appPrefs.s3Endpoint = endpoint
-        appPrefs.s3Region = region
-        appPrefs.s3Bucket = bucket
-        appPrefs.s3AccessKey = accessKey
-        appPrefs.s3SecretKey = secretKey
-        appPrefs.s3Prefix = prefix
-        appPrefs.obsidianDiaryFolder = diaryFolder
-        appPrefs.tagOpen = tagOpen
-        appPrefs.tagClose = tagClose
-        appPrefs.completedLabel = completedLabel
-        _state.update {
-            it.copy(
-                s3Endpoint = appPrefs.s3Endpoint,
-                s3Region = appPrefs.s3Region,
-                s3Bucket = appPrefs.s3Bucket,
-                s3AccessKey = appPrefs.s3AccessKey,
-                s3SecretKey = appPrefs.s3SecretKey,
-                s3Prefix = appPrefs.s3Prefix,
-                obsidianDiaryFolder = appPrefs.obsidianDiaryFolder,
-                tagOpen = appPrefs.tagOpen,
-                tagClose = appPrefs.tagClose,
-                completedLabel = appPrefs.completedLabel,
-                status = "Obsidian / 对象存储设置已保存",
-            )
-        }
     }
 
     fun setStorageTarget(target: String) {
@@ -423,11 +319,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
             val message = withContext(Dispatchers.IO) {
                 when (target) {
                     "local" -> "当前为仅本地，无需上行同步"
-                    "sync_server" -> {
-                        val card = syncClient.sync(date)
-                        val todos = syncClient.syncTodos(todoStore)
-                        listOf(card.message, todos.message).filter { it.isNotBlank() }.joinToString(" · ")
-                    }
                     "cloud" -> when (appPrefs.cloudProvider) {
                         "webdav" -> {
                             val cfg = WebDavConfig(
@@ -482,11 +373,11 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun addNativeTodo(text: String) {
-        if (text.isBlank()) return
+    fun createNativeTodo(onCreated: (String) -> Unit) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { todoStore.add(text) }
+            val todo = withContext(Dispatchers.IO) { todoStore.add("") }
             refreshNativeTodos()
+            onCreated(todo.id)
         }
     }
 
@@ -502,132 +393,6 @@ class DiaryViewModel(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { todoStore.delete(id) }
             refreshNativeTodos()
         }
-    }
-
-    private fun s3Config(): S3Config =
-        S3Config(
-            endpoint = appPrefs.s3Endpoint,
-            region = appPrefs.s3Region,
-            bucket = appPrefs.s3Bucket,
-            accessKey = appPrefs.s3AccessKey,
-            secretKey = appPrefs.s3SecretKey,
-            prefix = appPrefs.s3Prefix,
-        )
-
-    private fun tagRule(): TagRule =
-        TagRule(
-            open = appPrefs.tagOpen,
-            close = appPrefs.tagClose,
-            completedLabel = appPrefs.completedLabel,
-            boldCompleted = true,
-        )
-
-    fun refreshObsidianTodos() {
-        viewModelScope.launch {
-            if (!appPrefs.obsidianTodosEnabled) {
-                _state.update {
-                    it.copy(
-                        obsidianTodos = emptyList(),
-                        todosLoading = false,
-                        todoStatus = "",
-                    )
-                }
-                return@launch
-            }
-            val cfg = s3Config()
-            if (!cfg.enabled) {
-                _state.update {
-                    it.copy(
-                        todoStatus = "未配置对象存储 · 显示示例待办",
-                        obsidianTodos = DemoSeed.sampleObsidianTodos(),
-                        todosLoading = false,
-                    )
-                }
-                return@launch
-            }
-            _state.update { it.copy(todosLoading = true, todoStatus = "") }
-            try {
-                val todos = withContext(Dispatchers.IO) {
-                    val store = S3ObjectStore(cfg)
-                    val folder = appPrefs.obsidianDiaryFolder
-                    val keys = store.listMarkdownKeys(folder)
-                    val rule = tagRule()
-                    keys.flatMap { key ->
-                        val md = store.getObject(key)
-                        val path = key.removePrefix(cfg.prefix.trim('/')).trimStart('/')
-                        ObsidianTodoExtract.extract(path.ifBlank { key }, md, rule)
-                    }
-                }
-                _state.update {
-                    it.copy(
-                        obsidianTodos = todos.ifEmpty { DemoSeed.sampleObsidianTodos() },
-                        todosLoading = false,
-                        todoStatus = if (todos.isEmpty()) {
-                            "COS 暂无未完成项 · 显示示例"
-                        } else {
-                            "已加载 ${todos.size} 条 Obsidian 待办"
-                        },
-                    )
-                }
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        todosLoading = false,
-                        todoStatus = "加载失败：${e.message}",
-                        obsidianTodos = emptyList(),
-                    )
-                }
-            }
-        }
-    }
-
-    fun completeObsidianTodo(todo: ObsidianTodo) {
-        viewModelScope.launch {
-            if (!appPrefs.obsidianTodosEnabled) return@launch
-            val cfg = s3Config()
-            if (!cfg.enabled) {
-                _state.update {
-                    it.copy(
-                        obsidianTodos = it.obsidianTodos.filterNot { t -> t.key == todo.key },
-                        todoStatus = "已完成（示例）",
-                    )
-                }
-                return@launch
-            }
-            _state.update { it.copy(todosLoading = true) }
-            try {
-                withContext(Dispatchers.IO) {
-                    val store = S3ObjectStore(cfg)
-                    val key = joinKey(cfg.prefix, todo.filePath)
-                    val md = store.getObject(key)
-                    val lines = md.split("\r\n", "\n").toMutableList()
-                    if (todo.lineIndex !in lines.indices) error("行号失效，请重新刷新")
-                    if (lines[todo.lineIndex] != todo.originalLine) {
-                        error("原文已变更，请重新刷新后再完成")
-                    }
-                    val completed = ObsidianTodoExtract.toCompletedLine(todo.originalLine, tagRule())
-                        ?: error("无法回写完成标记")
-                    lines[todo.lineIndex] = completed
-                    store.putObject(key, lines.joinToString("\n"))
-                }
-                _state.update { it.copy(todosLoading = false, todoStatus = "已写回 Obsidian") }
-                refreshObsidianTodos()
-            } catch (e: Exception) {
-                _state.update {
-                    it.copy(
-                        todosLoading = false,
-                        obsidianTodos = it.obsidianTodos.filterNot { t -> t.key == todo.key },
-                        todoStatus = "已完成（本地）",
-                    )
-                }
-            }
-        }
-    }
-
-    private fun joinKey(prefix: String, path: String): String {
-        val p = prefix.trim().trim('/')
-        val f = path.trim().trim('/')
-        return if (p.isEmpty()) f else "$p/$f"
     }
 
     private fun captureContextOnce(entryDate: String) {

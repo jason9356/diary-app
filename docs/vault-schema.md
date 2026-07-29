@@ -1,6 +1,6 @@
 # 灵感匣 Vault Schema v1
 
-本地优先的统一数据目录。自建同步服务、WebDAV 云盘镜像、仅本机，都围绕同一套文件布局。
+本地优先的统一数据目录。仅本机或云盘（WebDAV）镜像，都围绕同一套文件布局。
 
 ## 目录
 
@@ -70,10 +70,7 @@ vault/   （Android: filesDir/diary_data）
 | `storage_target` | 行为 |
 |------------------|------|
 | `local` | 仅本机；不同步上行 |
-| `sync_server` | 现有 `/v1` 自建服务（卡片 + todos + assets） |
 | `cloud` | 云盘适配器；`webdav` 可镜像目录；其它厂商配置预留 |
-
-Obsidian / COS 有序待办是旁路，**不**写入本 Vault 主结构。
 
 ## 云盘镜像（WebDAV）
 

@@ -2,7 +2,7 @@ package com.personaldiary.android.data
 
 import android.content.Context
 
-/** App-level preferences. Sync credentials stay in SyncPrefs. */
+/** App-level preferences (theme, vault storage target, cloud credentials). */
 class AppPrefs(context: Context) {
     private val sp = context.getSharedPreferences("diary_app", Context.MODE_PRIVATE)
 
@@ -30,64 +30,21 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean("demo_seeded_v1", false)
         set(v) = sp.edit().putBoolean("demo_seeded_v1", v).apply()
 
-    /** Personal Obsidian/COS todo bridge — off for most users. */
-    var obsidianTodosEnabled: Boolean
-        get() = sp.getBoolean("obsidian_todos_enabled", false)
-        set(v) = sp.edit().putBoolean("obsidian_todos_enabled", v).apply()
-
     var aiEnabled: Boolean
         get() = sp.getBoolean("ai_enabled", false)
         set(v) = sp.edit().putBoolean("ai_enabled", v).apply()
 
-    var s3Endpoint: String
-        get() = sp.getString("s3_endpoint", "").orEmpty()
-        set(v) = sp.edit().putString("s3_endpoint", v.trim()).apply()
-
-    var s3Region: String
-        get() = sp.getString("s3_region", "us-east-1").orEmpty()
-        set(v) = sp.edit().putString("s3_region", v.trim().ifBlank { "us-east-1" }).apply()
-
-    var s3Bucket: String
-        get() = sp.getString("s3_bucket", "").orEmpty()
-        set(v) = sp.edit().putString("s3_bucket", v.trim()).apply()
-
-    var s3AccessKey: String
-        get() = sp.getString("s3_access_key", "").orEmpty()
-        set(v) = sp.edit().putString("s3_access_key", v.trim()).apply()
-
-    var s3SecretKey: String
-        get() = sp.getString("s3_secret_key", "").orEmpty()
-        set(v) = sp.edit().putString("s3_secret_key", v.trim()).apply()
-
-    var s3Prefix: String
-        get() = sp.getString("s3_prefix", "").orEmpty()
-        set(v) = sp.edit().putString("s3_prefix", v.trim()).apply()
-
-    /** Vault-relative diary folder, e.g. 日记 */
-    var obsidianDiaryFolder: String
-        get() = sp.getString("obsidian_diary_folder", "日记").orEmpty()
-        set(v) = sp.edit().putString("obsidian_diary_folder", v.trim()).apply()
-
-    var tagOpen: String
-        get() = sp.getString("tag_open", "【").orEmpty().ifBlank { "【" }
-        set(v) = sp.edit().putString("tag_open", v).apply()
-
-    var tagClose: String
-        get() = sp.getString("tag_close", "】").orEmpty().ifBlank { "】" }
-        set(v) = sp.edit().putString("tag_close", v).apply()
-
-    var completedLabel: String
-        get() = sp.getString("completed_label", "已完成").orEmpty().ifBlank { "已完成" }
-        set(v) = sp.edit().putString("completed_label", v.trim()).apply()
-
-    /** local | sync_server | cloud */
+    /** local | cloud */
     var storageTarget: String
-        get() = sp.getString("storage_target", "local").orEmpty().ifBlank { "local" }
-        set(v) {
-            val n = when (v.trim().lowercase()) {
-                "sync_server", "cloud" -> v.trim().lowercase()
-                else -> "local"
+        get() {
+            val raw = sp.getString("storage_target", "local").orEmpty()
+            return when (raw.trim().lowercase()) {
+                "cloud" -> "cloud"
+                else -> "local" // migrates legacy sync_server → local
             }
+        }
+        set(v) {
+            val n = if (v.trim().lowercase() == "cloud") "cloud" else "local"
             sp.edit().putString("storage_target", n).apply()
         }
 
