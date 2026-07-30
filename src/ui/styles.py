@@ -1,62 +1,71 @@
 """
-Theme stylesheets — quiet ink journal: cool paper, moss accent, soft hierarchy.
+Theme stylesheets — Sparkbox 青笺: cool gray paper, moss-teal accent.
+Aligned with Android PaletteCatalog.slip (light/dark).
 """
 from __future__ import annotations
 
-# Cool mist paper + deep moss — not warm cream, not electric blue.
+# 青笺 · 冷灰纸 · 青苔 — match Android Slip
 LIGHT = {
-    "bg": "#F2F4F1",
-    "surface": "#FBFCFB",
-    "sidebar": "#E8EBE7",
-    "border": "#D2D8D2",
-    "text": "#1B221E",
-    "muted": "#6A746C",
-    "accent": "#3F6B58",
-    "accent_soft": "#DCE8E1",
-    "dot": "#3F6B58",
-    "today": "#3F6B58",
+    "bg": "#F5F7F8",
+    "bg_deep": "#EEF2F4",
+    "surface": "#FFFFFF",
+    "sidebar": "#EEF2F4",
+    "border": "#E5E7EB",
+    "text": "#111827",
+    "muted": "#6B7280",
+    "accent": "#3A5F5A",
+    "accent_soft": "#D9E5E2",
+    "dot": "#3A5F5A",
+    "today": "#3A5F5A",
     "danger": "#A33B3B",
-    "input": "#FBFCFB",
-    "hover": "#DDE3DD",
-    "card": "#F6F8F5",
-    "selection": "#C9DCD2",
+    "input": "#FFFFFF",
+    "hover": "#E8EEF0",
+    "card": "#FFFFFF",
+    "selection": "#C5D8D4",
+    "on_accent": "#FFFFFF",
 }
 
 DARK = {
-    "bg": "#121614",
-    "surface": "#1A1F1C",
-    "sidebar": "#0F1311",
-    "border": "#2A322D",
-    "text": "#E6EBE7",
-    "muted": "#8E9891",
-    "accent": "#7FAE97",
-    "accent_soft": "#24332C",
-    "dot": "#7FAE97",
-    "today": "#7FAE97",
+    "bg": "#12161A",
+    "bg_deep": "#0E1114",
+    "surface": "#1A1F24",
+    "sidebar": "#0E1114",
+    "border": "#2A3138",
+    "text": "#E8EAED",
+    "muted": "#9AA0A8",
+    "accent": "#7FA39C",
+    "accent_soft": "#243836",
+    "dot": "#7FA39C",
+    "today": "#7FA39C",
     "danger": "#E08A8A",
-    "input": "#1F2622",
-    "hover": "#232A26",
-    "card": "#1C221F",
+    "input": "#1A1F24",
+    "hover": "#222830",
+    "card": "#1A1F24",
     "selection": "#2F4339",
+    "on_accent": "#12161A",
 }
 
 
 def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     from utils.fonts import css_stack
 
-    # Unified CJK sans for UI + editor; mono only tightens size slightly.
     family = css_stack()
     ui_font = family
     display_font = family
     editor_font = family
     editor_size = "15px" if mono else "16px"
     p = palette
+    bg_deep = p.get("bg_deep", p["sidebar"])
     return f"""
     * {{
         font-family: {ui_font};
     }}
     QMainWindow, QWidget#centralRoot {{
-        background: {p['bg']};
+        background: qlineargradient(
+            x1:0, y1:0, x2:0, y2:1,
+            stop:0 {p['bg']},
+            stop:1 {bg_deep}
+        );
         color: {p['text']};
     }}
     QMenuBar {{
@@ -67,72 +76,104 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     }}
     QMenuBar::item:selected {{
         background: {p['hover']};
-        border-radius: 4px;
+        border-radius: 6px;
     }}
     QMenu {{
         background: {p['surface']};
         color: {p['text']};
         border: 1px solid {p['border']};
+        border-radius: 10px;
         padding: 4px;
     }}
     QMenu::item:selected {{
         background: {p['accent_soft']};
         color: {p['accent']};
+        border-radius: 6px;
     }}
     QWidget#sidebar {{
         background: {p['sidebar']};
         border-right: 1px solid {p['border']};
     }}
     QLabel#brandMark {{
-        color: {p['text']};
+        color: {p['accent']};
         font-family: {display_font};
-        font-size: 22px;
-        font-weight: 700;
-        letter-spacing: 3px;
-        padding: 2px 0 10px 0;
+        font-size: 26px;
+        font-weight: 800;
+        letter-spacing: 2px;
+        padding: 4px 0 12px 0;
     }}
     QWidget#editorPane {{
-        background: {p['bg']};
+        background: transparent;
     }}
-    QFrame#card, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox {{
+    QFrame#paperSheet {{
+        background: {p['surface']};
+        border: 1px solid {p['border']};
+        border-radius: 18px;
+    }}
+    QFrame#inspirationCard {{
+        background: {p['card']};
+        border: 1px solid {p['border']};
+        border-radius: 14px;
+    }}
+    QLabel#cardTag {{
+        color: {p['muted']};
+        font-size: 12px;
+        font-weight: 400;
+    }}
+    QLabel#cardTitle {{
+        color: {p['text']};
+        font-size: 16px;
+        font-weight: 700;
+    }}
+    QLabel#cardBody {{
+        color: {p['muted']};
+        font-size: 13px;
+        font-weight: 400;
+    }}
+    QLabel#cardFooter {{
+        color: {p['muted']};
+        font-size: 11px;
+        font-weight: 400;
+    }}
+    QPlainTextEdit, QTextEdit, QLineEdit, QComboBox {{
         background: {p['surface']};
         color: {p['text']};
         border: 1px solid {p['border']};
-        border-radius: 8px;
-    }}
-    QPlainTextEdit#diaryEditor {{
-        background: {p['surface']};
-        border: none;
         border-radius: 12px;
-        padding: 24px 30px;
+    }}
+    QPlainTextEdit#diaryEditor, QTextEdit#diaryEditor {{
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        padding: 8px 4px;
         font-size: {editor_size};
-        line-height: 1.55;
+        line-height: 1.6;
         font-family: {editor_font};
         selection-background-color: {p['selection']};
     }}
     QTextBrowser#diaryPreview {{
-        background: {p['surface']};
+        background: transparent;
         border: none;
-        border-radius: 12px;
-        padding: 20px 26px;
+        border-radius: 0;
+        padding: 4px 2px;
         color: {p['text']};
     }}
     QLabel#dateHeading {{
         font-family: {display_font};
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 700;
         color: {p['text']};
         padding: 2px 0;
-        letter-spacing: 1px;
+        letter-spacing: 0.5px;
     }}
     QLabel#metaLabel {{
         color: {p['muted']};
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 400;
     }}
     QLabel#contextLabel {{
         color: {p['accent']};
-        font-size: 14px;
+        font-size: 13px;
         font-weight: 400;
         padding: 2px 0 4px 0;
     }}
@@ -142,22 +183,22 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     QLabel#filmThumb {{
         background: {p['hover']};
         border: 1px solid {p['border']};
-        border-radius: 10px;
+        border-radius: 8px;
     }}
     QWidget#imageFilmstrip {{
         background: transparent;
     }}
     QLabel#sectionLabel {{
         color: {p['muted']};
-        font-size: 13px;
-        font-weight: 700;
-        letter-spacing: 1.4px;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 1px;
     }}
     QPushButton {{
         background: transparent;
         color: {p['muted']};
         border: none;
-        border-radius: 6px;
+        border-radius: 8px;
         padding: 6px 10px;
         font-size: 13px;
     }}
@@ -168,39 +209,49 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     QPushButton#navTab {{
         color: {p['muted']};
         background: transparent;
-        border-top: 2px solid transparent;
-        border-right: 2px solid transparent;
-        border-left: 2px solid transparent;
-        border-bottom: 2px solid transparent;
-        border-radius: 0;
-        padding: 8px 4px 7px 4px;
-        font-size: 14px;
-        font-weight: 400;
+        border: none;
+        border-radius: 10px;
+        padding: 8px 6px;
+        font-size: 13px;
+        font-weight: 500;
     }}
     QPushButton#navTab:hover {{
         color: {p['text']};
-        background: transparent;
+        background: {p['hover']};
     }}
     QPushButton#navTab:checked {{
-        color: {p['text']};
-        background: transparent;
-        border-bottom: 2px solid {p['accent']};
+        color: {p['accent']};
+        background: {p['accent_soft']};
         font-weight: 700;
     }}
     QPushButton#toolBtn {{
         color: {p['muted']};
         font-size: 13px;
         padding: 6px 8px;
+        border-radius: 8px;
     }}
     QPushButton#toolBtn:hover {{
         color: {p['text']};
         background: {p['hover']};
     }}
+    QPushButton#primaryBtn {{
+        background: {p['accent']};
+        color: {p.get('on_accent', '#FFFFFF')};
+        border: none;
+        border-radius: 10px;
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 700;
+    }}
+    QPushButton#primaryBtn:hover {{
+        background: {p['accent']};
+        color: {p.get('on_accent', '#FFFFFF')};
+    }}
     QToolButton {{
         background: transparent;
         color: {p['muted']};
         border: none;
-        border-radius: 5px;
+        border-radius: 8px;
         padding: 6px 8px;
         font-weight: 700;
         font-size: 13px;
@@ -214,10 +265,10 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         color: {p['accent']};
     }}
     QLineEdit#searchBox {{
-        background: {p['input']};
+        background: {p['surface']};
         border: 1px solid {p['border']};
-        border-radius: 8px;
-        padding: 9px 12px;
+        border-radius: 12px;
+        padding: 10px 12px;
         font-size: 14px;
     }}
     QLineEdit#searchBox:focus {{
@@ -227,6 +278,18 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         border: none;
         background: transparent;
         outline: none;
+    }}
+    QListWidget#cardList::item {{
+        background: transparent;
+        border: none;
+        margin: 0 0 10px 0;
+        padding: 0;
+    }}
+    QListWidget#cardList::item:selected {{
+        background: transparent;
+    }}
+    QListWidget#cardList::item:hover {{
+        background: transparent;
     }}
     QListWidget::item {{
         background: transparent;
@@ -261,7 +324,7 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         font-size: 15px;
         font-weight: 700;
         padding: 4px 6px;
-        border-radius: 6px;
+        border-radius: 8px;
     }}
     QCalendarWidget QToolButton:hover {{
         background: {p['hover']};
@@ -302,11 +365,14 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
     }}
     QComboBox {{
         padding: 6px 10px;
-        border-radius: 8px;
-        background: {p['input']};
+        border-radius: 10px;
+        background: {p['surface']};
         border: 1px solid {p['border']};
         color: {p['text']};
         font-size: 13px;
+    }}
+    QComboBox#noteCombo {{
+        border-radius: 12px;
     }}
     QComboBox QAbstractItemView {{
         background: {p['surface']};
@@ -328,10 +394,10 @@ def build_stylesheet(palette: dict[str, str], mono: bool = False) -> str:
         height: 0;
     }}
     QStatusBar {{
-        background: {p['bg']};
+        background: transparent;
         color: {p['muted']};
         border-top: 1px solid {p['border']};
-        font-size: 13px;
+        font-size: 12px;
     }}
     QSplitter::handle {{
         background: {p['border']};

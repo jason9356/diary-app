@@ -30,14 +30,17 @@ from PySide6.QtWidgets import (
 
 from app.config import AppConfig, save_config
 from app.diary_service import DiaryService
-from app.sync_client import SyncClient
+from app.vault_mirror import VaultMirror
+from app.webdav_client import WebDavClient, WebDavConfig
 from app.weather import WeatherSnapshot, fetch_desktop
 from app.writing_timer import WritingTimer
+from storage.native_todo_store import NativeTodoStore
 from ui.calendar_view import CalendarPanel
 from ui.editor import DiaryEditor
 from ui.search_panel import SearchPanel, highlight_in_editor
 from ui.styles import resolve_palette, build_stylesheet
 from ui.timeline_view import TimelinePanel
+from ui.todo_panel import TodoPanel
 
 logger = logging.getLogger("diary.ui.main")
 
@@ -76,7 +79,7 @@ class MainWindow(QMainWindow):
             self.config.device_id = str(uuid.uuid4())
             save_config(self.config)
 
-        self.setWindowTitle("日记")
+        self.setWindowTitle("灵感匣")
         self.setMinimumSize(config.min_window_width, config.min_window_height)
         self.resize(config.window_width, config.window_height)
 
@@ -110,7 +113,7 @@ class MainWindow(QMainWindow):
         side_layout.setContentsMargins(0, 14, 0, 10)
         side_layout.setSpacing(8)
 
-        brand = QLabel("日记")
+        brand = QLabel("灵感匣")
         brand.setObjectName("brandMark")
         brand.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.brand_label = brand
@@ -120,12 +123,13 @@ class MainWindow(QMainWindow):
         side_layout.addLayout(brand_wrap)
 
         nav = QHBoxLayout()
-        nav.setContentsMargins(14, 0, 14, 2)
-        nav.setSpacing(2)
+        nav.setContentsMargins(12, 0, 12, 4)
+        nav.setSpacing(6)
         self.btn_cal = QPushButton("日历")
-        self.btn_time = QPushButton("时间线")
+        self.btn_time = QPushButton("灵感")
+        self.btn_todos = QPushButton("事项")
         self.btn_search = QPushButton("搜索")
-        for b in (self.btn_cal, self.btn_time, self.btn_search):
+        for b in (self.btn_cal, self.btn_time, self.btn_todos, self.btn_search):
             b.setObjectName("navTab")
             b.setCheckable(True)
             b.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -136,11 +140,15 @@ class MainWindow(QMainWindow):
 
         self.calendar_panel = CalendarPanel()
         self.timeline_panel = TimelinePanel()
+        self.todo_store = NativeTodoStore(self.config.data_path)
+        self.todo_panel = TodoPanel(self.todo_store)
         self.search_panel = SearchPanel()
         side_layout.addWidget(self.calendar_panel, 1)
         side_layout.addWidget(self.timeline_panel, 1)
+        side_layout.addWidget(self.todo_panel, 1)
         side_layout.addWidget(self.search_panel, 1)
         self.timeline_panel.hide()
+        self.todo_panel.hide()
         self.search_panel.hide()
 
         tools = QHBoxLayout()
@@ -166,16 +174,15 @@ class MainWindow(QMainWindow):
         editor_layout.setContentsMargins(0, 0, 0, 0)
 
         note_bar = QHBoxLayout()
-        note_bar.setContentsMargins(12, 8, 12, 0)
+        note_bar.setContentsMargins(20, 14, 20, 0)
         note_bar.setSpacing(8)
         self.note_combo = QComboBox()
         self.note_combo.setObjectName("noteCombo")
         self.note_combo.setMinimumWidth(160)
         self.note_combo.currentIndexChanged.connect(self._on_note_selected)
-        self.btn_new_note = QPushButton("新建笔记")
-        self.btn_new_note.setObjectName("toolBtn")
+        self.btn_new_note = QPushButton("新建灵感")
+        self.btn_new_note.setObjectName("primaryBtn")
         self.btn_new_note.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_new_note.setFlat(True)
         self.btn_new_note.clicked.connect(self.new_note)
         note_bar.addWidget(self.note_combo, 1)
         note_bar.addWidget(self.btn_new_note)
@@ -203,7 +210,7 @@ class MainWindow(QMainWindow):
 
     def _build_menu(self) -> None:
         file_menu = self.menuBar().addMenu("文件")
-        act_today = QAction("今天的日记", self)
+        act_today = QAction("今天的灵感", self)
         act_today.setShortcut(QKeySequence("Ctrl+T"))
         act_today.triggered.connect(lambda: self.open_date(self.service.today(), focus=True))
         file_menu.addAction(act_today)
@@ -218,7 +225,7 @@ class MainWindow(QMainWindow):
         act_sync.triggered.connect(self.sync_now)
         file_menu.addAction(act_sync)
 
-        act_sync_cfg = QAction("同步设置…", self)
+        act_sync_cfg = QAction("数据存放…", self)
         act_sync_cfg.triggered.connect(self.edit_sync_settings)
         file_menu.addAction(act_sync_cfg)
 
@@ -239,18 +246,14 @@ class MainWindow(QMainWindow):
         view_menu.addAction(act_font)
 
         view_menu.addSeparator()
-        act_edit = QAction("仅编辑", self)
-        act_edit.setShortcut(QKeySequence("Ctrl+1"))
-        act_edit.triggered.connect(lambda: self.editor.set_mode("edit"))
-        view_menu.addAction(act_edit)
-        act_split = QAction("分栏预览", self)
-        act_split.setShortcut(QKeySequence("Ctrl+2"))
-        act_split.triggered.connect(lambda: self.editor.set_mode("split"))
-        view_menu.addAction(act_split)
-        act_preview = QAction("仅预览", self)
-        act_preview.setShortcut(QKeySequence("Ctrl+3"))
-        act_preview.triggered.connect(lambda: self.editor.set_mode("preview"))
-        view_menu.addAction(act_preview)
+        act_wysiwyg = QAction("所见即所得", self)
+        act_wysiwyg.setShortcut(QKeySequence("Ctrl+1"))
+        act_wysiwyg.triggered.connect(lambda: self.editor.set_mode("wysiwyg"))
+        view_menu.addAction(act_wysiwyg)
+        act_source = QAction("Markdown 源码", self)
+        act_source.setShortcut(QKeySequence("Ctrl+2"))
+        act_source.triggered.connect(lambda: self.editor.set_mode("source"))
+        view_menu.addAction(act_source)
 
         view_menu.addSeparator()
         act_img = QAction("插入图片…", self)
@@ -267,6 +270,7 @@ class MainWindow(QMainWindow):
     def _connect(self) -> None:
         self.btn_cal.clicked.connect(lambda: self._show_panel("cal"))
         self.btn_time.clicked.connect(lambda: self._show_panel("time"))
+        self.btn_todos.clicked.connect(lambda: self._show_panel("todos"))
         self.btn_search.clicked.connect(lambda: self._show_panel("search"))
 
         self.calendar_panel.date_selected.connect(self.open_date)
@@ -290,8 +294,8 @@ class MainWindow(QMainWindow):
         self.btn_font.clicked.connect(self.toggle_font)
         self.btn_export.clicked.connect(self.export_zip)
 
-        mode = self.config.editor_mode if self.config.editor_mode in ("edit", "preview", "split") else "split"
-        self.editor.set_mode(mode)  # type: ignore[arg-type]
+        mode = self.config.editor_mode if self.config.editor_mode in ("wysiwyg", "source") else "wysiwyg"
+        self.editor.set_mode(mode)
 
     # ----- Theme / font -----
 
@@ -313,12 +317,15 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(build_stylesheet(palette, mono=mono))
         self.calendar_panel.apply_palette(palette)
         self.editor.set_theme_palette(palette, mono=mono)
-        self.brand_label.setFont(emphasis_font(pixel_size=22, bold=True))
-        self.calendar_panel.title.setFont(emphasis_font(pixel_size=13, bold=True))
-        self.timeline_panel.title.setFont(emphasis_font(pixel_size=13, bold=True))
-        self.search_panel.title.setFont(emphasis_font(pixel_size=13, bold=True))
-        for btn in (self.btn_cal, self.btn_time, self.btn_search):
-            btn.setFont(emphasis_font(pixel_size=14, bold=btn.isChecked()))
+        self.search_panel.set_palette(palette)
+        self._palette = palette
+        self.brand_label.setFont(emphasis_font(pixel_size=26, bold=True))
+        self.calendar_panel.title.setFont(emphasis_font(pixel_size=12, bold=True))
+        self.timeline_panel.title.setFont(emphasis_font(pixel_size=12, bold=True))
+        self.search_panel.title.setFont(emphasis_font(pixel_size=12, bold=True))
+        for btn in (self.btn_cal, self.btn_time, self.btn_todos, self.btn_search):
+            btn.setFont(emphasis_font(pixel_size=13, bold=btn.isChecked()))
+        self.todo_panel.title.setFont(emphasis_font(pixel_size=12, bold=True))
         theme_label = {"system": "跟随系统", "light": "浅色", "dark": "深色"}.get(
             self.config.theme, self.config.theme
         )
@@ -326,7 +333,7 @@ class MainWindow(QMainWindow):
         self.btn_font.setText("字号·紧" if mono else "字号·常")
 
     def _on_editor_mode(self, mode: str) -> None:
-        if mode in ("edit", "preview", "split"):
+        if mode in ("wysiwyg", "source"):
             self.config.editor_mode = mode  # type: ignore[assignment]
             save_config(self.config)
 
@@ -349,14 +356,18 @@ class MainWindow(QMainWindow):
 
         self.btn_cal.setChecked(which == "cal")
         self.btn_time.setChecked(which == "time")
+        self.btn_todos.setChecked(which == "todos")
         self.btn_search.setChecked(which == "search")
-        for btn in (self.btn_cal, self.btn_time, self.btn_search):
-            btn.setFont(emphasis_font(pixel_size=14, bold=btn.isChecked()))
+        for btn in (self.btn_cal, self.btn_time, self.btn_todos, self.btn_search):
+            btn.setFont(emphasis_font(pixel_size=13, bold=btn.isChecked()))
         self.calendar_panel.setVisible(which == "cal")
         self.timeline_panel.setVisible(which == "time")
+        self.todo_panel.setVisible(which == "todos")
         self.search_panel.setVisible(which == "search")
         if which == "time":
             self.refresh_timeline()
+        if which == "todos":
+            self.todo_panel.refresh()
 
     def refresh_sidebar(self) -> None:
         dates = self.service.dates_with_content()
@@ -457,7 +468,7 @@ class MainWindow(QMainWindow):
         self.calendar_panel.set_selected_date(entry.entry_date)
         self.timeline_panel.select_entry(entry.id)
         if self._search_keyword:
-            highlight_in_editor(self.editor.editor, self._search_keyword)
+            highlight_in_editor(self.editor.editor, self._search_keyword, getattr(self, "_palette", None))
         else:
             highlight_in_editor(self.editor.editor, "")
 
@@ -684,34 +695,54 @@ class MainWindow(QMainWindow):
         self._search_keyword = query
         hits = self.service.search(query) if query else []
         self.search_panel.show_results(hits, query)
-        highlight_in_editor(self.editor.editor, query)
+        highlight_in_editor(self.editor.editor, query, getattr(self, "_palette", None))
 
     def _on_search_open(self, entry_id: str) -> None:
         entry = self.service.get_by_id(entry_id)
         if entry:
             self.open_note(entry_id, focus=True)
-        highlight_in_editor(self.editor.editor, self._search_keyword)
+        highlight_in_editor(self.editor.editor, self._search_keyword, getattr(self, "_palette", None))
 
-    # ----- Sync -----
+    # ----- Storage / sync -----
 
     def edit_sync_settings(self) -> None:
         from app.config import load_config
 
-        # Always show the token currently on disk (avoid stale in-memory value).
         fresh = load_config()
-        self.config.sync_endpoint = fresh.sync_endpoint
-        self.config.sync_token = fresh.sync_token
+        self.config.storage_target = fresh.storage_target
+        self.config.webdav_url = fresh.webdav_url
+        self.config.webdav_user = fresh.webdav_user
+        self.config.webdav_root = fresh.webdav_root
+        self.config.webdav_pass = fresh.webdav_pass
 
         dlg = QDialog(self)
-        dlg.setWindowTitle("同步设置")
+        dlg.setWindowTitle("数据存放")
         form = QFormLayout(dlg)
-        endpoint = QLineEdit(self.config.sync_endpoint)
-        endpoint.setPlaceholderText("https://your-vps.example.com 或 http://127.0.0.1:8000")
-        token = QLineEdit(self.config.sync_token)
-        token.setEchoMode(QLineEdit.EchoMode.Password)
-        token.setPlaceholderText("Bearer token（DIARY_SYNC_TOKEN）")
-        form.addRow("服务地址", endpoint)
-        form.addRow("Token", token)
+
+        target = QComboBox()
+        target.addItem("仅本机", "local")
+        target.addItem("云盘 · WebDAV", "cloud")
+        idx = target.findData(self.config.storage_target if self.config.storage_target in ("local", "cloud") else "local")
+        target.setCurrentIndex(max(0, idx))
+
+        url = QLineEdit(self.config.webdav_url)
+        url.setPlaceholderText("https://dav.example.com/remote.php/dav/files/user")
+        user = QLineEdit(self.config.webdav_user)
+        password = QLineEdit(self.config.webdav_pass)
+        password.setEchoMode(QLineEdit.EchoMode.Password)
+        root = QLineEdit(self.config.webdav_root or "/sparkbox")
+        root.setPlaceholderText("/sparkbox")
+
+        form.addRow("存放方式", target)
+        form.addRow("WebDAV 地址", url)
+        form.addRow("账号", user)
+        form.addRow("密码", password)
+        form.addRow("根路径", root)
+        hint = QLabel("第三方网盘请填其 WebDAV 地址；未开通时保持「仅本机」。")
+        hint.setWordWrap(True)
+        hint.setObjectName("metaLabel")
+        form.addRow(hint)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
@@ -720,41 +751,67 @@ class MainWindow(QMainWindow):
         buttons.rejected.connect(dlg.reject)
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        self.config.sync_endpoint = endpoint.text().strip()
-        self.config.sync_token = token.text().strip()
-        save_config(self.config, update_token=True)
-        self._set_status("同步设置已保存")
+
+        self.config.storage_target = str(target.currentData() or "local")
+        self.config.cloud_provider = "webdav"
+        self.config.webdav_url = url.text().strip()
+        self.config.webdav_user = user.text().strip()
+        self.config.webdav_root = root.text().strip() or "/sparkbox"
+        self.config.webdav_pass = password.text()
+        save_config(self.config, update_secrets=True)
+        self._set_status("数据存放设置已保存")
 
     def sync_now(self) -> None:
         self.save_current()
-        # Reload token from secrets in case settings were edited.
         from app.config import load_config
 
         fresh = load_config()
-        self.config.sync_endpoint = fresh.sync_endpoint
-        self.config.sync_token = fresh.sync_token
-        self.config.sync_cursor = fresh.sync_cursor
+        self.config.storage_target = fresh.storage_target
+        self.config.webdav_url = fresh.webdav_url
+        self.config.webdav_user = fresh.webdav_user
+        self.config.webdav_root = fresh.webdav_root
+        self.config.webdav_pass = fresh.webdav_pass
 
-        if not self.config.sync_endpoint.strip() or not self.config.sync_token.strip():
+        if self.config.storage_target != "cloud":
+            self._set_status("当前为仅本机，无需上行同步")
+            QMessageBox.information(self, "同步", "当前为仅本机，数据已保存在本地 Vault。\n可在「数据存放」中切换为 WebDAV 云盘。")
+            return
+
+        cfg = WebDavConfig(
+            base_url=self.config.webdav_url,
+            username=self.config.webdav_user,
+            password=self.config.webdav_pass,
+            root_path=self.config.webdav_root or "/sparkbox",
+        )
+        if not cfg.enabled:
             self.edit_sync_settings()
-            if not self.config.sync_endpoint.strip() or not self.config.sync_token.strip():
+            fresh = load_config()
+            self.config.webdav_url = fresh.webdav_url
+            self.config.webdav_user = fresh.webdav_user
+            self.config.webdav_pass = fresh.webdav_pass
+            self.config.webdav_root = fresh.webdav_root
+            cfg = WebDavConfig(
+                base_url=self.config.webdav_url,
+                username=self.config.webdav_user,
+                password=self.config.webdav_pass,
+                root_path=self.config.webdav_root or "/sparkbox",
+            )
+            if not cfg.enabled:
                 return
 
         self._set_status("正在同步…")
-        # Run on UI thread with short HTTP timeouts — avoids SQLite cross-thread hangs.
         QGuiApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
-            client = SyncClient(self.config, self.service)
-            result = client.sync_today_and_changes(self._current_date)
+            result = VaultMirror(self.config.data_path, WebDavClient(cfg)).sync()
+            self.service.reindex_from_disk()
+            self.todo_panel.refresh()
         finally:
             QGuiApplication.restoreOverrideCursor()
 
         self.open_note(self._entry_id, focus=False)
         self.refresh_sidebar()
         self._set_status(result.message)
-        if result.message.startswith("同步失败") or (
-            "失败" in result.message and "推送" not in result.message
-        ):
+        if "失败" in result.message:
             QMessageBox.warning(self, "同步", result.message)
         else:
             QMessageBox.information(self, "同步", result.message)
@@ -766,7 +823,7 @@ class MainWindow(QMainWindow):
         default_name = f"diary-export-{datetime.now().strftime('%Y%m%d')}.zip"
         path, _ = QFileDialog.getSaveFileName(
             self,
-            "导出日记 ZIP",
+            "导出灵感匣 ZIP",
             str(Path.home() / default_name),
             "ZIP 文件 (*.zip)",
         )

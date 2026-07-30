@@ -1,5 +1,8 @@
 """
-Diary sync client (desktop) against sync-protocol v2.
+Legacy REST sync client against removed self-hosted server.
+
+Kept for reference only — desktop now uses local vault + WebDAV
+(``app.vault_mirror`` / 「数据存放」).
 """
 from __future__ import annotations
 

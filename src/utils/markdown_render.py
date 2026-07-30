@@ -78,9 +78,10 @@ def _preview_css(p: dict[str, str], mono: bool = False) -> str:
         margin: 1.2em 0 0.45em;
         letter-spacing: 0.02em;
     }}
-    h1 {{ font-size: 1.85em; }}
-    h2 {{ font-size: 1.45em; }}
-    h3 {{ font-size: 1.2em; }}
+    h1 {{ font-size: 1.22em; }}
+    h2 {{ font-size: 1.22em; }}
+    h3 {{ font-size: 1.12em; }}
+    h4 {{ font-size: 1.05em; }}
     p {{ margin: 0.65em 0; }}
     a {{ color: {p['accent']}; text-decoration: none; }}
     a:hover {{ text-decoration: underline; }}
@@ -102,12 +103,12 @@ def _preview_css(p: dict[str, str], mono: bool = False) -> str:
         font-size: 0.92em;
         background: {p['hover']};
         padding: 0.12em 0.35em;
-        border-radius: 4px;
+        border-radius: 6px;
     }}
     pre {{
         background: {p['hover']};
         border: 1px solid {p['border']};
-        border-radius: 10px;
+        border-radius: 12px;
         padding: 12px 14px;
         overflow-x: auto;
     }}

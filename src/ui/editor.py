@@ -1,6 +1,6 @@
 """
-Markdown diary editor with live rendered preview.
-Modes: edit | preview | split
+WYSIWYG Markdown editor (QTextEdit + Qt markdown round-trip).
+Persists CommonMark via toMarkdown() / setMarkdown().
 """
 from __future__ import annotations
 
@@ -8,13 +8,20 @@ from pathlib import Path
 from typing import Literal, Optional
 
 from PySide6.QtCore import Qt, QTimer, Signal
-from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence, QTextCursor
+from PySide6.QtGui import (
+    QDragEnterEvent,
+    QDropEvent,
+    QFont,
+    QKeySequence,
+    QTextCharFormat,
+    QTextCursor,
+    QTextListFormat,
+)
 from PySide6.QtWidgets import (
+    QFrame,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
-    QSplitter,
-    QTextBrowser,
+    QTextEdit,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -22,17 +29,14 @@ from PySide6.QtWidgets import (
 
 from ui.image_strip import ImageFilmstrip
 from ui.styles import LIGHT
-from utils.markdown_render import md_to_html
 
-EditorMode = Literal["edit", "preview", "split"]
+EditorMode = Literal["wysiwyg", "source"]
 
 
 class DiaryEditor(QWidget):
-    """Markdown source editor + HTML preview."""
-
     content_changed = Signal()
     save_requested = Signal()
-    image_dropped = Signal(str)  # local filesystem path
+    image_dropped = Signal(str)
     image_pick_requested = Signal()
     focus_changed = Signal(bool)
     mode_changed = Signal(str)
@@ -50,7 +54,8 @@ class DiaryEditor(QWidget):
         self._data_root = Path(data_root) if data_root else Path(".")
         self._palette = dict(LIGHT)
         self._mono = False
-        self._mode: EditorMode = "split"
+        self._mode: EditorMode = "wysiwyg"
+        self._source_cache = ""
 
         self.date_label = QLabel("")
         self.date_label.setObjectName("dateHeading")
@@ -67,57 +72,55 @@ class DiaryEditor(QWidget):
         self.filmstrip = ImageFilmstrip()
         self.filmstrip.set_data_root(self._data_root)
         self.filmstrip.image_clicked.connect(self._on_film_click)
-        self.filmstrip.setVisible(False)  # display deferred; upload entry kept
+        self.filmstrip.setVisible(False)
 
-        self.editor = QPlainTextEdit()
+        self.editor = QTextEdit()
         self.editor.setObjectName("diaryEditor")
-        self.editor.setPlaceholderText("写点什么…（支持 Markdown，可拖入或点「图片」插入）")
-        self.editor.setAcceptDrops(False)
+        self.editor.setAcceptRichText(True)
+        self.editor.setPlaceholderText("正文")
         self.editor.setTabChangesFocus(False)
-        self.editor.setLineWrapMode(QPlainTextEdit.LineWrapMode.WidgetWidth)
+        self.editor.setAcceptDrops(False)
 
-        self.preview = QTextBrowser()
-        self.preview.setObjectName("diaryPreview")
-        self.preview.setOpenExternalLinks(True)
-        self.preview.setOpenLinks(True)
-        self.preview.setFrameShape(QTextBrowser.Shape.NoFrame)
-
-        self._splitter = QSplitter(Qt.Orientation.Horizontal)
-        self._splitter.setChildrenCollapsible(False)
-        self._splitter.addWidget(self.editor)
-        self._splitter.addWidget(self.preview)
-        self._splitter.setStretchFactor(0, 1)
-        self._splitter.setStretchFactor(1, 1)
+        self.source = QTextEdit()
+        self.source.setObjectName("diaryEditor")
+        self.source.setAcceptRichText(False)
+        self.source.setPlaceholderText("Markdown 源码")
+        self.source.setVisible(False)
 
         self.setAcceptDrops(True)
         toolbar = self._build_toolbar()
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 20, 28, 20)
-        layout.setSpacing(10)
+        paper = QFrame()
+        paper.setObjectName("paperSheet")
+        paper_layout = QVBoxLayout(paper)
+        paper_layout.setContentsMargins(22, 20, 22, 20)
+        paper_layout.setSpacing(10)
         header = QVBoxLayout()
         header.setSpacing(2)
         header.addWidget(self.date_label)
         header.addWidget(self.context_label)
         header.addWidget(self.meta_label)
-        layout.addLayout(header)
-        layout.addWidget(self.filmstrip)
-        layout.addWidget(toolbar)
-        layout.addWidget(self._splitter, 1)
+        paper_layout.addLayout(header)
+        paper_layout.addWidget(self.filmstrip)
+        paper_layout.addWidget(toolbar)
+        paper_layout.addWidget(self.editor, 1)
+        paper_layout.addWidget(self.source, 1)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 12, 20, 16)
+        layout.setSpacing(0)
+        layout.addWidget(paper, 1)
 
         self._save_timer = QTimer(self)
         self._save_timer.setSingleShot(True)
         self._save_timer.setInterval(autosave_ms)
         self._save_timer.timeout.connect(self._emit_save)
 
-        self._preview_timer = QTimer(self)
-        self._preview_timer.setSingleShot(True)
-        self._preview_timer.setInterval(120)
-        self._preview_timer.timeout.connect(self.refresh_preview)
-
         self.editor.textChanged.connect(self._on_text_changed)
+        self.source.textChanged.connect(self._on_text_changed)
         self.editor.installEventFilter(self)
-        self.set_mode("split")
+        self.source.installEventFilter(self)
+        self._apply_editor_chrome()
 
     def _build_toolbar(self) -> QWidget:
         bar = QWidget()
@@ -133,38 +136,27 @@ class DiaryEditor(QWidget):
             row.addWidget(b)
             return b
 
-        btn("H1", "标题 1", lambda: self._wrap_line("# "))
-        btn("H2", "标题 2", lambda: self._wrap_line("## "))
-        btn("B", "加粗 Ctrl+B", lambda: self._wrap_selection("**", "**"))
-        btn("I", "斜体 Ctrl+I", lambda: self._wrap_selection("*", "*"))
-        btn("•", "无序列表", lambda: self._wrap_line("- "))
-        btn("1.", "有序列表", lambda: self._wrap_line("1. "))
-        btn("“", "引用", lambda: self._wrap_line("> "))
-        btn("</>", "代码块", lambda: self._insert_block("```\n", "\n```"))
-        btn("图片", "插入图片（也可拖入编辑区）", self.image_pick_requested.emit)
+        btn("H2", "二级标题", lambda: self._set_heading(2))
+        btn("H3", "三级标题", lambda: self._set_heading(3))
+        btn("B", "加粗 Ctrl+B", self._toggle_bold)
+        btn("I", "斜体 Ctrl+I", self._toggle_italic)
+        btn("•", "无序列表", lambda: self._toggle_list(QTextListFormat.Style.ListDisc))
+        btn("1.", "有序列表", lambda: self._toggle_list(QTextListFormat.Style.ListDecimal))
+        btn("图片", "插入图片（也可拖入）", self.image_pick_requested.emit)
 
         row.addSpacing(12)
+        self.btn_wysiwyg = QToolButton()
+        self.btn_wysiwyg.setText("所见即所得")
+        self.btn_wysiwyg.setCheckable(True)
+        self.btn_wysiwyg.setChecked(True)
+        self.btn_wysiwyg.clicked.connect(lambda: self.set_mode("wysiwyg"))
+        row.addWidget(self.btn_wysiwyg)
 
-        self.btn_edit = QToolButton()
-        self.btn_edit.setText("编辑")
-        self.btn_edit.setCheckable(True)
-        self.btn_edit.setToolTip("仅编辑 Markdown 源码")
-        self.btn_edit.clicked.connect(lambda: self.set_mode("edit"))
-        row.addWidget(self.btn_edit)
-
-        self.btn_split = QToolButton()
-        self.btn_split.setText("分栏")
-        self.btn_split.setCheckable(True)
-        self.btn_split.setToolTip("左侧源码 · 右侧渲染")
-        self.btn_split.clicked.connect(lambda: self.set_mode("split"))
-        row.addWidget(self.btn_split)
-
-        self.btn_preview = QToolButton()
-        self.btn_preview.setText("预览")
-        self.btn_preview.setCheckable(True)
-        self.btn_preview.setToolTip("仅显示渲染结果")
-        self.btn_preview.clicked.connect(lambda: self.set_mode("preview"))
-        row.addWidget(self.btn_preview)
+        self.btn_source = QToolButton()
+        self.btn_source.setText("源码")
+        self.btn_source.setCheckable(True)
+        self.btn_source.clicked.connect(lambda: self.set_mode("source"))
+        row.addWidget(self.btn_source)
 
         row.addStretch(1)
         return bar
@@ -172,51 +164,69 @@ class DiaryEditor(QWidget):
     def set_data_root(self, path: Path) -> None:
         self._data_root = Path(path)
         self.filmstrip.set_data_root(self._data_root)
-        self.refresh_preview()
 
     def set_theme_palette(self, palette: dict[str, str], mono: bool = False) -> None:
         from utils.fonts import emphasis_font
 
         self._palette = dict(palette)
         self._mono = mono
-        self.date_label.setFont(emphasis_font(pixel_size=26, bold=True))
-        self.refresh_preview()
+        self.date_label.setFont(emphasis_font(pixel_size=24, bold=True))
+        self._apply_editor_chrome()
 
-    def set_mode(self, mode: EditorMode) -> None:
-        self._mode = mode
-        self.btn_edit.setChecked(mode == "edit")
-        self.btn_split.setChecked(mode == "split")
-        self.btn_preview.setChecked(mode == "preview")
-        self.editor.setVisible(mode in ("edit", "split"))
-        self.preview.setVisible(mode in ("preview", "split"))
-        if mode == "split":
-            self._splitter.setSizes([500, 500])
-        elif mode == "edit":
-            self._splitter.setSizes([1, 0])
-        else:
-            self._splitter.setSizes([0, 1])
-            self.refresh_preview()
-        if mode != "preview":
-            self.focus_editor()
+    def _apply_editor_chrome(self) -> None:
+        size = 15 if self._mono else 16
+        font = QFont(self.editor.font())
+        font.setPixelSize(size)
+        self.editor.setFont(font)
+        self.source.setFont(font)
+        color = self._palette.get("text", "#111827")
+        self.editor.setStyleSheet(
+            f"QTextEdit#diaryEditor {{ color: {color}; background: transparent; border: none; }}"
+        )
+        self.source.setStyleSheet(
+            f"QTextEdit#diaryEditor {{ color: {color}; background: transparent; border: none; }}"
+        )
+
+    def set_mode(self, mode: EditorMode | str) -> None:
+        if mode in ("edit", "split", "preview"):
+            mode = "wysiwyg"
+        if mode not in ("wysiwyg", "source"):
+            mode = "wysiwyg"
+        if self._mode == "wysiwyg" and mode == "source":
+            self._source_cache = self.editor.toMarkdown()
+            self.source.blockSignals(True)
+            self.source.setPlainText(self._source_cache)
+            self.source.blockSignals(False)
+        elif self._mode == "source" and mode == "wysiwyg":
+            md = self.source.toPlainText()
+            self.editor.blockSignals(True)
+            self.editor.setMarkdown(md)
+            self.editor.blockSignals(False)
+        self._mode = mode  # type: ignore[assignment]
+        self.btn_wysiwyg.setChecked(mode == "wysiwyg")
+        self.btn_source.setChecked(mode == "source")
+        self.editor.setVisible(mode == "wysiwyg")
+        self.source.setVisible(mode == "source")
+        self.focus_editor()
         self.mode_changed.emit(mode)
 
-    def mode(self) -> EditorMode:
+    def mode(self) -> str:
         return self._mode
 
     def eventFilter(self, obj, event):  # noqa: N802
         from PySide6.QtCore import QEvent
 
-        if obj is self.editor:
+        if obj in (self.editor, self.source):
             if event.type() == QEvent.Type.FocusIn:
                 self.focus_changed.emit(True)
             elif event.type() == QEvent.Type.FocusOut:
                 self.focus_changed.emit(False)
-            elif event.type() == QEvent.Type.KeyPress:
+            elif event.type() == QEvent.Type.KeyPress and obj is self.editor:
                 if event.matches(QKeySequence.StandardKey.Bold):
-                    self._wrap_selection("**", "**")
+                    self._toggle_bold()
                     return True
                 if event.matches(QKeySequence.StandardKey.Italic):
-                    self._wrap_selection("*", "*")
+                    self._toggle_italic()
                     return True
         return super().eventFilter(obj, event)
 
@@ -251,26 +261,29 @@ class DiaryEditor(QWidget):
         self.context_label.style().polish(self.context_label)
 
     def set_day_images(self, rel_paths: list[str]) -> None:
-        # Image preview deferred — keep upload entry, hide filmstrip.
         self.filmstrip.set_images([])
         self.filmstrip.setVisible(False)
 
     def set_markdown(self, text: str) -> None:
         self._loading = True
-        self.editor.setPlainText(text)
+        md = text or ""
+        self.editor.setMarkdown(md)
+        self.source.setPlainText(md)
         self._loading = False
         self._dirty = False
         cursor = self.editor.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.editor.setTextCursor(cursor)
-        self.refresh_preview()
 
     def markdown(self) -> str:
-        return self.editor.toPlainText()
+        if self._mode == "source":
+            return self.source.toPlainText()
+        return self.editor.toMarkdown()
 
     def focus_editor(self) -> None:
-        if self.editor.isVisible():
-            self.editor.setFocus(Qt.FocusReason.OtherFocusReason)
+        target = self.source if self._mode == "source" else self.editor
+        if target.isVisible():
+            target.setFocus(Qt.FocusReason.OtherFocusReason)
 
     def is_dirty(self) -> bool:
         return self._dirty
@@ -285,19 +298,8 @@ class DiaryEditor(QWidget):
             self._emit_save()
 
     def refresh_preview(self) -> None:
-        if not self.preview.isVisible() and self._mode == "edit":
-            return
-        html_doc = md_to_html(
-            self.editor.toPlainText(),
-            base_dir=self._data_root,
-            palette=self._palette,
-            mono=self._mono,
-        )
-        bar = self.preview.verticalScrollBar()
-        pos = bar.value()
-        self.preview.setHtml(html_doc)
-        self.preview.setSearchPaths([str(self._data_root)])
-        bar.setValue(pos)
+        # Kept for API compatibility; WYSIWYG has no separate preview pane.
+        return
 
     def _on_text_changed(self) -> None:
         if self._loading:
@@ -305,68 +307,99 @@ class DiaryEditor(QWidget):
         self._dirty = True
         self.content_changed.emit()
         self._save_timer.start()
-        if self.preview.isVisible():
-            self._preview_timer.start()
 
     def _emit_save(self) -> None:
         self.save_requested.emit()
 
-    def _on_film_click(self, rel: str) -> None:
-        needle = f"]({rel})"
-        text = self.editor.toPlainText()
-        idx = text.find(needle)
-        if idx >= 0:
-            if self._mode == "preview":
-                self.set_mode("split")
-            cursor = self.editor.textCursor()
-            cursor.setPosition(idx)
-            self.editor.setTextCursor(cursor)
-            self.editor.setFocus()
-            self.editor.centerCursor()
-        else:
-            # Asset exists but not yet in markdown — insert reference.
-            self.insert_image_markdown(rel)
+    def _active(self) -> QTextEdit:
+        return self.source if self._mode == "source" else self.editor
 
-    def _wrap_selection(self, left: str, right: str) -> None:
-        if self._mode == "preview":
-            self.set_mode("split")
+    def _toggle_bold(self) -> None:
+        if self._mode == "source":
+            self._wrap_source("**", "**")
+            return
+        fmt = QTextCharFormat()
         cursor = self.editor.textCursor()
+        cur = cursor.charFormat().fontWeight()
+        fmt.setFontWeight(
+            QFont.Weight.Normal if cur > QFont.Weight.Normal else QFont.Weight.Bold
+        )
+        cursor.mergeCharFormat(fmt)
+        self.editor.mergeCurrentCharFormat(fmt)
+        self.editor.setFocus()
+
+    def _toggle_italic(self) -> None:
+        if self._mode == "source":
+            self._wrap_source("*", "*")
+            return
+        fmt = QTextCharFormat()
+        cursor = self.editor.textCursor()
+        fmt.setFontItalic(not cursor.charFormat().fontItalic())
+        cursor.mergeCharFormat(fmt)
+        self.editor.mergeCurrentCharFormat(fmt)
+        self.editor.setFocus()
+
+    def _set_heading(self, level: int) -> None:
+        if self._mode == "source":
+            prefix = "#" * max(2, level) + " "
+            self._wrap_source_line(prefix)
+            return
+        cursor = self.editor.textCursor()
+        block_fmt = cursor.blockFormat()
+        # Qt headingLevel: 0 = normal, 1..6 = headings. Prefer H2+ like Android.
+        block_fmt.setHeadingLevel(max(2, level))
+        cursor.setBlockFormat(block_fmt)
+        char = QTextCharFormat()
+        char.setFontWeight(QFont.Weight.DemiBold)
+        char.setFontPointSize(18 if level <= 2 else 15)
+        cursor.mergeBlockCharFormat(char)
+        self.editor.setFocus()
+
+    def _toggle_list(self, style: QTextListFormat.Style) -> None:
+        if self._mode == "source":
+            self._wrap_source_line("- " if style == QTextListFormat.Style.ListDisc else "1. ")
+            return
+        cursor = self.editor.textCursor()
+        cursor.createList(style)
+        self.editor.setFocus()
+
+    def _wrap_source(self, left: str, right: str) -> None:
+        cursor = self.source.textCursor()
         if cursor.hasSelection():
             selected = cursor.selectedText().replace("\u2029", "\n")
             cursor.insertText(f"{left}{selected}{right}")
         else:
             cursor.insertText(f"{left}{right}")
             cursor.movePosition(QTextCursor.MoveOperation.Left, n=len(right))
-            self.editor.setTextCursor(cursor)
-        self.editor.setFocus()
+            self.source.setTextCursor(cursor)
+        self.source.setFocus()
 
-    def _wrap_line(self, prefix: str) -> None:
-        if self._mode == "preview":
-            self.set_mode("split")
-        cursor = self.editor.textCursor()
+    def _wrap_source_line(self, prefix: str) -> None:
+        cursor = self.source.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.StartOfBlock)
         cursor.insertText(prefix)
-        self.editor.setFocus()
+        self.source.setFocus()
 
-    def _insert_block(self, before: str, after: str) -> None:
-        if self._mode == "preview":
-            self.set_mode("split")
-        cursor = self.editor.textCursor()
-        selected = cursor.selectedText().replace("\u2029", "\n") if cursor.hasSelection() else ""
-        cursor.insertText(f"{before}{selected}{after}")
-        if not selected:
-            cursor.movePosition(QTextCursor.MoveOperation.Left, n=len(after))
-            self.editor.setTextCursor(cursor)
-        self.editor.setFocus()
+    def _on_film_click(self, rel: str) -> None:
+        self.insert_image_markdown(rel)
 
     def insert_image_markdown(self, rel_path: str) -> None:
-        if self._mode == "preview":
-            self.set_mode("split")
-        cursor = self.editor.textCursor()
         name = Path(rel_path).name
-        cursor.insertText(f"\n![{name}]({rel_path})\n")
-        self.editor.setFocus()
-        self.refresh_preview()
+        snippet = f"\n![{name}]({rel_path})\n"
+        if self._mode == "source":
+            cursor = self.source.textCursor()
+            cursor.insertText(snippet)
+            self.source.setFocus()
+        else:
+            # Insert as markdown then re-parse keeps image placeholder text.
+            md = self.editor.toMarkdown() + snippet
+            self.editor.blockSignals(True)
+            self.editor.setMarkdown(md)
+            self.editor.blockSignals(False)
+            self._dirty = True
+            self.content_changed.emit()
+            self._save_timer.start()
+            self.editor.setFocus()
 
     def dragEnterEvent(self, event: QDragEnterEvent) -> None:  # noqa: N802
         if event.mimeData().hasUrls():

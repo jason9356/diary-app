@@ -21,7 +21,7 @@ logger = logging.getLogger("diary.config")
 
 ThemeMode = Literal["system", "light", "dark"]
 FontMode = Literal["system", "mono"]
-EditorMode = Literal["edit", "preview", "split"]
+EditorMode = Literal["wysiwyg", "source", "edit", "preview", "split"]  # legacy modes accepted
 
 
 @dataclass
@@ -31,7 +31,7 @@ class AppConfig:
     data_dir: str = ""
     theme: ThemeMode = "system"
     font_mode: FontMode = "system"
-    editor_mode: EditorMode = "split"
+    editor_mode: EditorMode = "wysiwyg"  # type: ignore[assignment]
     window_width: int = 1100
     window_height: int = 720
     sidebar_width: int = 256
@@ -39,7 +39,15 @@ class AppConfig:
     min_window_width: int = 800
     min_window_height: int = 520
 
-    # Sync (personal VPS). Token stays local — do not commit real values.
+    # Storage: local | cloud (WebDAV). Legacy sync_endpoint/token ignored by UI.
+    storage_target: str = "local"
+    cloud_provider: str = "webdav"
+    webdav_url: str = ""
+    webdav_user: str = ""
+    webdav_root: str = "/sparkbox"
+    webdav_pass: str = ""
+
+    # Legacy self-hosted sync (kept for config migration only; not used by UI).
     sync_endpoint: str = ""
     sync_token: str = ""
     device_id: str = ""
@@ -61,6 +69,10 @@ class AppConfig:
         return self.data_path / "assets"
 
     @property
+    def todos_root(self) -> Path:
+        return self.data_path / "todos"
+
+    @property
     def db_path(self) -> Path:
         return self.data_path / "diary.db"
 
@@ -77,7 +89,7 @@ def load_config() -> AppConfig:
         try:
             raw = json.loads(path.read_text(encoding="utf-8"))
             for key, value in raw.items():
-                if hasattr(cfg, key) and key != "sync_token":
+                if hasattr(cfg, key) and key not in ("sync_token", "webdav_pass"):
                     setattr(cfg, key, value)
         except Exception as exc:  # noqa: BLE001 — recover with defaults
             logger.warning("Failed to load config, using defaults: %s", exc)
@@ -88,6 +100,8 @@ def load_config() -> AppConfig:
             sec = json.loads(secrets.read_text(encoding="utf-8"))
             if isinstance(sec.get("sync_token"), str):
                 cfg.sync_token = sec["sync_token"]
+            if isinstance(sec.get("webdav_pass"), str):
+                cfg.webdav_pass = sec["webdav_pass"]
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to load sync secrets: %s", exc)
 
@@ -95,24 +109,29 @@ def load_config() -> AppConfig:
     if not str(cfg.data_dir).strip():
         cfg.data_dir = ""
 
+    # Migrate legacy self-hosted endpoint → local (cloud must be reconfigured as WebDAV).
+    if cfg.storage_target not in ("local", "cloud"):
+        cfg.storage_target = "local"
+
     cfg.data_path.mkdir(parents=True, exist_ok=True)
     cfg.diary_root.mkdir(parents=True, exist_ok=True)
     cfg.assets_root.mkdir(parents=True, exist_ok=True)
+    cfg.todos_root.mkdir(parents=True, exist_ok=True)
     default_log_dir().mkdir(parents=True, exist_ok=True)
     return cfg
 
 
-def save_config(cfg: AppConfig, *, update_token: bool = False) -> None:
+def save_config(cfg: AppConfig, *, update_secrets: bool = False, update_token: bool = False) -> None:
     """Persist preferences to JSON.
 
-    ``sync_token`` is only written when ``update_token=True`` (sync settings dialog).
-    Other saves (window size, theme, …) must not overwrite ``sync_secrets.json``
-    with a stale in-memory token.
+    Secrets (``webdav_pass`` / legacy ``sync_token``) are only written when
+    ``update_secrets`` or ``update_token`` is True.
     """
     path = cfg.config_path
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = asdict(cfg)
     token = payload.pop("sync_token", "")
+    webdav_pass = payload.pop("webdav_pass", "")
     # Keep default data location as "" so tracked config stays machine-agnostic.
     try:
         if not str(cfg.data_dir).strip() or Path(cfg.data_dir).resolve() == default_data_dir().resolve():
@@ -120,10 +139,18 @@ def save_config(cfg: AppConfig, *, update_token: bool = False) -> None:
     except OSError:
         payload["data_dir"] = ""
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    if update_token:
+    if update_secrets or update_token:
         secrets = project_root() / "data" / "sync_secrets.json"
+        existing: dict = {}
+        if secrets.exists():
+            try:
+                existing = json.loads(secrets.read_text(encoding="utf-8"))
+            except Exception:  # noqa: BLE001
+                existing = {}
+        existing["sync_token"] = token
+        existing["webdav_pass"] = webdav_pass
         secrets.write_text(
-            json.dumps({"sync_token": token}, indent=2, ensure_ascii=False),
+            json.dumps(existing, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
     logger.debug("Config saved → %s", path)

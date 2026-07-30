@@ -85,6 +85,10 @@ class DiaryService:
     def close(self) -> None:
         self.db.close()
 
+    def reindex_from_disk(self) -> None:
+        """Rebuild SQLite index from vault markdown after cloud pull."""
+        self._reindex_from_disk()
+
     def _run_file_migration(self) -> None:
         """One-time v1 → v2 file layout migration + reindex."""
         migrated = self.md.migrate_v1_layout(self.days)

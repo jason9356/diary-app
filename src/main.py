@@ -1,5 +1,5 @@
 """
-Personal Diary App — entry point.
+灵感匣 (Sparkbox) desktop — entry point.
 
 Run:
   python src/main.py
@@ -34,8 +34,8 @@ def main() -> int:
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
     app = QApplication(sys.argv)
-    app.setApplicationName("Diary")
-    app.setOrganizationName("PersonalDiary")
+    app.setApplicationName("灵感匣")
+    app.setOrganizationName("Sparkbox")
     app.setQuitOnLastWindowClosed(True)
     app.setFont(app_font(12))
 
